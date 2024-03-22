@@ -67,6 +67,13 @@ optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
 # TODO: modify the fully connected layer for binary classification
 # hint: it might be helpful to print(model) to see how the model is structured
+print("Before modifying the model:")
+print(model)
+#modify the last layer of the model to have only 2 outputs
+model.fc = nn.Linear(model.fc.in_features, 2)
+print("After modifying the model:")
+print(model)
+
 
 # use a GPU if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
