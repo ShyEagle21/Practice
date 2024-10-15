@@ -57,8 +57,10 @@ def generate_demand(csv_file, sortation_center_id, predicted_volume, prediction_
 
 
     # Convert 'planned_arrival_datetime' and 'actual_arrival_datetime' to datetime
-    filtered_df['planned_arrival_datetime'] = pd.to_datetime(filtered_df['planned_arrival_datetime'])
-    filtered_df['actual_arrival_datetime'] = pd.to_datetime(filtered_df['actual_arrival_datetime'])
+    #filtered_df['planned_arrival_datetime'] = pd.to_datetime(filtered_df['planned_arrival_datetime'])
+    filtered_df.loc[:, 'planned_arrival_datetime'] = pd.to_datetime(filtered_df['planned_arrival_datetime'])
+    #filtered_df['actual_arrival_datetime'] = pd.to_datetime(filtered_df['actual_arrival_datetime'])
+    filtered_df.loc[:, 'actual_arrival_datetime'] = pd.to_datetime(filtered_df['actual_arrival_datetime'])
     planned_truck = {}
 
     #pull out the planned arrival time for each truck number
