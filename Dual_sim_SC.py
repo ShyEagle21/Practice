@@ -1428,7 +1428,7 @@ def Simulation_Machine(feature_values,
         (1225, 1245),  # Day shift break 2
     ]
 
-    var_status = False
+    var_status = True
     # Setup inbound induct simulation
     env, sortation_center = setup_simulation(pallet_info, 
                                              night_tm_pit_unload, 
@@ -1603,7 +1603,7 @@ def Simulation_Machine(feature_values,
     del sortation_center    
     gc.collect()
 
-    var_status = True
+    var_status = False
     env, sortation_center = setup_simulation(pallet_info, 
                                             night_tm_pit_unload, 
                                             night_tm_pit_induct, 
