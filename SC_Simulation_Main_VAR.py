@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import simpy
 import random
+import gc
 
 class G:
     # Constants (adjust as needed)
@@ -77,6 +78,7 @@ class G:
     PASSED_OVER_PALLETS_1 = None
     PASSED_OVER_PALLETS_2 = None
     PASSED_OVER_PALLETS_3 = None
+    PASSED_OVER_PACKAGES = None
 
     TOTAL_LINEHAUL_A_PACKAGES = None
     TOTAL_LINEHAUL_B_PACKAGES = None
@@ -126,10 +128,77 @@ class G:
     PARTITION_2_RATIO = 0.35  # Ratio of packages to go to partition 2
     PARTITION_3_RATIO = 0.15  # Ratio of packages to go to partition 3
 
-    USPS_DEPARTURE_TIME = [780]  # minutes
-    UPSN_DEPARTURE_TIME = [1440]  # minutes
-    FDEG_DEPARTURE_TIME = [180, 390]  # minutes
-    FDE_DEPARTURE_TIME = [330]  # minutes
+    def reset(self):
+        self.TOTAL_PACKAGES = None  # Total packages to be processed
+        self.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
+        self.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
+        self.TLMD_AB_INDUCT_TIME = None
+        self.TLMD_C_INDUCT_TIME = None
+        self.TLMD_STAGED_PACKAGES = None
+        self.TLMD_PARTITION_1_PACKAGES = None
+        self.TLMD_PARTITION_2_PACKAGES = None
+        self.TLMD_PARTITION_3AB_PACKAGES = None
+        self.TLMD_PARTITION_3_PACKAGES = None
+        self.TOTAL_PALLETS_TLMD = None
+        self.TLMD_PARTITION_1_SORT_TIME = None
+        self.TLMD_PARTITION_2_SORT_TIME = None 
+        self.TLMD_PARTITION_3AB_SORT_TIME = None
+        self.TLMD_PARTITION_3_SORT_TIME = None
+        self.TLMD_SORTED_PACKAGES = None
+        self.TLMD_PARTITION_1_CART_STAGE_TIME = None
+        self.TLMD_PARTITION_2_CART_STAGE_TIME = None 
+        self.TLMD_PARTITION_3_CART_STAGE_TIME = None
+        self.TLMD_OUTBOUND_PACKAGES = None
+        self.I=1
+        self.J=1
+        self.K=1
+        self.PASSED_OVER_PALLETS_1 = None
+        self.PASSED_OVER_PALLETS_2 = None
+        self.PASSED_OVER_PALLETS_3 = None
+
+        self.TOTAL_LINEHAUL_A_PACKAGES = None
+        self.TOTAL_LINEHAUL_B_PACKAGES = None
+        self.TOTAL_LINEHAUL_C_PACKAGES = None
+
+        self.USPS_LINEHAUL_A_PACKAGES = None
+        self.USPS_LINEHAUL_B_PACKAGES = None
+        self.USPS_LINEHAUL_C_PACKAGES = None
+
+        self.UPSN_LINEHAUL_A_PACKAGES = None
+        self.UPSN_LINEHAUL_B_PACKAGES = None
+        self.UPSN_LINEHAUL_C_PACKAGES = None
+
+        self.FDEG_LINEHAUL_A_PACKAGES = None
+        self.FDEG_LINEHAUL_B_PACKAGES = None
+        self.FDEG_LINEHAUL_C_PACKAGES = None
+
+        self.FDE_LINEHAUL_A_PACKAGES = None
+        self.FDE_LINEHAUL_B_PACKAGES = None
+        self.FDE_LINEHAUL_C_PACKAGES = None
+
+        self.TLMD_LINEHAUL_A_PACKAGES = None
+        self.TLMD_LINEHAUL_B_PACKAGES = None
+        self.TLMD_LINEHAUL_C_PACKAGES = None
+
+        self.TLMD_LINEHAUL_TFC_PACKAGES=None
+
+        self.LINEHAUL_C_TIME = None
+        self.LINEHAUL_TFC_TIME = None
+
+        self.TOTAL_PACKAGES_UPSN = None
+        self.TOTAL_PACKAGES_USPS = None
+        self.TOTAL_PACKAGES_FDEG = None
+        self.TOTAL_PACKAGES_FDE = None
+        self.UPSN_PALLETS = None
+        self.USPS_PALLETS = None
+        self.FDEG_PALLETS = None
+        self.FDE_PALLETS = None
+        self.UPSN_SORT_TIME = None
+        self.USPS_SORT_TIME = None
+        self.FDEG_SORT_TIME = None
+        self.FDE_SORT_TIME = None
+
+        self.TOTAL_CARTS_TLMD = None
 
 class Package:
     def __init__(self, tracking_number, pallet_id, scac):
@@ -212,7 +281,7 @@ def manage_resources(env, sortation_center, current_resource,
                         day_tm_TLMD_sort,
                         day_tm_TLMD_stage):
     
-        yield env.timeout(30)
+        #yield env.timeout(30)
         # Start with 1 resource for the first 10 minutes
         sortation_center.current_resource['tm_pit_unload'] = simpy.Resource(env, capacity=night_tm_pit_unload)
         sortation_center.current_resource['tm_pit_induct'] = simpy.PriorityResource(env, capacity=night_tm_pit_induct)
@@ -246,13 +315,13 @@ def manage_resources(env, sortation_center, current_resource,
         sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=day_tm_TLMD_stage)
         yield env.timeout(600)
         
-def make_resources_unavailable(env, sortation_center, start, end):
-    yield env.timeout(start)
-    #print(f'Resources unavailable at {env.now}')
-    sortation_center.resources_available = False
-    yield env.timeout(end - start)
-    #print(f'Resources available at {env.now}')
-    sortation_center.resources_available = True
+# def make_resources_unavailable(env, sortation_center, start, end):
+#     yield env.timeout(start)
+#     #print(f'Resources unavailable at {env.now}')
+#     sortation_center.resources_available = False
+#     yield env.timeout(end - start)
+#     #print(f'Resources available at {env.now}')
+#     sortation_center.resources_available = True
 
 def linehaul_C_arrival(env, sortation_center):
     yield env.timeout(G.LINEHAUL_C_TIME)
@@ -291,7 +360,6 @@ class Sortation_Center:
         
         self.env = env
         self.pallets_df = pallets_df
-
         self.current_resource = current_resources
 
         #Determine whether National Carrier is performed as Fluid or Pallet
@@ -419,8 +487,8 @@ class Sortation_Center:
     def move_to_induct_staging(self, pallet):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_pit_induct'].request(priority=1) as req: 
             yield req
             yield self.queues['queue_inbound_staging'].get()
@@ -437,8 +505,8 @@ class Sortation_Center:
     def induct_package(self, package, pallet): 
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_pit_induct'].request(priority=0) as req:  
             yield req
             yield self.queues['queue_induct_staging_packages'].get()
@@ -465,8 +533,8 @@ class Sortation_Center:
     def split_package(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_split'].request() as req:
             yield req
             yield self.queues['queue_splitter'].get()
@@ -484,8 +552,8 @@ class Sortation_Center:
     def national_carrier_sort(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_national_carrier_sort"].get()
@@ -523,8 +591,8 @@ class Sortation_Center:
     def check_all_UPSN_sorted(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         if len(self.queues['queue_UPSN_pallet'].items) == G.UPSN_LINEHAUL_A_PACKAGES + G.UPSN_LINEHAUL_B_PACKAGES:
             print(f'All A&B UPSN packages sorted at {self.env.now}')
             G.UPSN_SORT_TIME = self.env.now 
@@ -540,8 +608,8 @@ class Sortation_Center:
     def check_all_USPS_sorted(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         if len(self.queues['queue_USPS_pallet'].items) == G.USPS_LINEHAUL_A_PACKAGES + G.USPS_LINEHAUL_B_PACKAGES:
             print(f'All A&B USPS packages sorted at {self.env.now}')
             G.USPS_SORT_TIME = self.env.now
@@ -557,8 +625,8 @@ class Sortation_Center:
     def check_all_FDEG_sorted(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         if  len(self.queues['queue_FDEG_pallet'].items) == G.FDEG_LINEHAUL_A_PACKAGES + G.FDEG_LINEHAUL_B_PACKAGES:
             print(f'All A&B FDEG packages sorted at {self.env.now}')
             G.FDEG_SORT_TIME = self.env.now
@@ -574,8 +642,8 @@ class Sortation_Center:
     def check_all_FDE_sorted(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         if  len(self.queues['queue_FDE_pallet'].items) == G.FDE_LINEHAUL_A_PACKAGES + G.FDE_LINEHAUL_B_PACKAGES:
             print(f'All A&B FDE packages sorted at {self.env.now}')
             G.FDE_SORT_TIME = self.env.now
@@ -701,8 +769,8 @@ class Sortation_Center:
     def national_carrier_fluid_split_UPSN(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_UPSN_fluid"].get()
@@ -715,8 +783,8 @@ class Sortation_Center:
     def national_carrier_fluid_load_UPSN(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with  self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_UPSN_truck"].get()
@@ -728,8 +796,8 @@ class Sortation_Center:
     def national_carrier_fluid_split_USPS(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with  self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_USPS_fluid"].get()
@@ -742,8 +810,8 @@ class Sortation_Center:
     def national_carrier_fluid_load_USPS(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with  self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_USPS_truck"].get()
@@ -755,8 +823,8 @@ class Sortation_Center:
     def national_carrier_fluid_split_FDEG(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_FDEG_fluid"].get()
@@ -769,8 +837,8 @@ class Sortation_Center:
     def national_carrier_fluid_load_FDEG(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_FDEG_truck"].get()
@@ -782,8 +850,8 @@ class Sortation_Center:
     def national_carrier_fluid_split_FDE(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_FDE_fluid"].get()
@@ -796,8 +864,8 @@ class Sortation_Center:
     def national_carrier_fluid_load_FDE(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
             yield req
             yield self.queues["queue_FDE_truck"].get()
@@ -814,8 +882,8 @@ class Sortation_Center:
     def tlmd_buffer_sort(self, package):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_nonpit_buffer'].request(priority=1) as req:
             yield req
             yield self.queues['queue_tlmd_buffer_sort'].get()
@@ -828,8 +896,8 @@ class Sortation_Center:
     def check_all_packages_staged(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)   
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         if len(self.queues['queue_tlmd_pallet'].items) == G.TLMD_LINEHAUL_A_PACKAGES + G.TLMD_LINEHAUL_B_PACKAGES + G.TLMD_LINEHAUL_TFC_PACKAGES and not self.TLMD_AB_flag:
             self.ab_TLMD_packages_staged_time = self.env.now
             G.TLMD_AB_INDUCT_TIME = self.ab_TLMD_packages_staged_time
@@ -921,8 +989,8 @@ class Sortation_Center:
     def check_all_pallets_staged(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         while len(self.queues['queue_tlmd_pallet'].items) > 0:
             yield self.env.timeout(1)
         #print(f'All pallets staged at {self.env.now}')
@@ -931,8 +999,8 @@ class Sortation_Center:
     def feed_TLMD_induct_staging(self):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_TLMD_induct_stage'].request(priority=1) as req: 
             yield req
             while len(self.queues['queue_tlmd_induct_staging_pallets'].items) >= self.queues['queue_tlmd_induct_staging_pallets'].capacity:
@@ -959,8 +1027,8 @@ class Sortation_Center:
     def tlmd_induct_package(self, package, pallet):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_TLMD_induct'].request(priority=0) as req:  
             yield req
             yield self.queues['queue_tlmd_induct_staging_packages'].get()
@@ -986,8 +1054,8 @@ class Sortation_Center:
     def tlmd_lane_pickoff(self, package):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_TLMD_picker'].request() as req:
             yield req
             yield self.queues['queue_tlmd_splitter'].get()
@@ -1001,8 +1069,8 @@ class Sortation_Center:
     def tlmd_final_sort(self, package):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         with self.current_resource['tm_TLMD_sort'].request() as req:
             yield req
             yield self.queues['queue_tlmd_final_sort'].get()
@@ -1015,8 +1083,8 @@ class Sortation_Center:
     def check_all_TLMD_sorted(self):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
-        while not self.resources_available:
-            yield self.env.timeout(1)
+        #while not self.resources_available:
+        #    yield self.env.timeout(1)
         # print(f'Partition 1 Remaining: {len(self.queues["queue_tlmd_1_staged_pallet"].items)}')
         # print(f'Partition 2 Remaining: {len(self.queues["queue_tlmd_2_staged_pallet"].items)}')
         # print(f'Partition 3 Remaining: {len(self.queues["queue_tlmd_3_staged_pallet"].items)}')
@@ -1077,6 +1145,7 @@ class Sortation_Center:
             G.PASSED_OVER_PALLETS_1 = len(self.queues['queue_tlmd_1_staged_pallet'].items)
             G.PASSED_OVER_PALLETS_2 = len(self.queues['queue_tlmd_2_staged_pallet'].items)
             G.PASSED_OVER_PALLETS_3 = len(self.queues['queue_tlmd_3_staged_pallet'].items)
+            G.PASSED_OVER_PACKAGES = G.TOTAL_PACKAGES_TLMD - len(self.queues['queue_tlmd_cart'].items)
 
         yield self.env.timeout(0)
 
@@ -1237,8 +1306,8 @@ def setup_simulation(day_pallets,
 
     env.process(linehaul_C_arrival(env,sortation_center))
 
-    for start, end in unavailable_periods:
-        env.process(make_resources_unavailable(env, sortation_center, start, end))
+    # for start, end in unavailable_periods:
+    #     env.process(make_resources_unavailable(env, sortation_center, start, end))
 
     env.process(manage_resources(env, 
                                  sortation_center,
@@ -1316,9 +1385,8 @@ def Simulation_Machine(feature_values,
         raise ValueError('Total number of TMs exceeds the limit')
     if day_tm_TLMD_stage > day_total_tm > day_total_tm:
         raise ValueError('Total number of TMs exceeds the limit')
-
+    
     unavailable_periods = [
-        (0,30),
         (175, 210),  # Night shift bk1
         (415, 435),  # Night shift bk2
         (985, 1020),  # Day shift break 1
@@ -1373,7 +1441,7 @@ def Simulation_Machine(feature_values,
     "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
 
     # Sorted Packages
-    "TLMD_SORTED_PACKAGES": len(G.TLMD_SORTED_PACKAGES) if G.TLMD_SORTED_PACKAGES else 0,
+    #"TLMD_SORTED_PACKAGES": len(G.TLMD_SORTED_PACKAGES) if G.TLMD_SORTED_PACKAGES else 0,
 
     # Linehaul Totals
     "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
@@ -1429,7 +1497,83 @@ def Simulation_Machine(feature_values,
     "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
     "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
     "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
+    "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
 }
+
+    G.TOTAL_PACKAGES = None  # Total packages to be processed
+    G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
+    G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
+    G.TLMD_AB_INDUCT_TIME = None
+    G.TLMD_C_INDUCT_TIME = None
+    G.TLMD_STAGED_PACKAGES = None
+    G.TLMD_PARTITION_1_PACKAGES = None
+    G.TLMD_PARTITION_2_PACKAGES = None
+    G.TLMD_PARTITION_3AB_PACKAGES = None
+    G.TLMD_PARTITION_3_PACKAGES = None
+    G.TOTAL_PALLETS_TLMD = None
+    G.TLMD_PARTITION_1_SORT_TIME = None
+    G.TLMD_PARTITION_2_SORT_TIME = None 
+    G.TLMD_PARTITION_3AB_SORT_TIME = None
+    G.TLMD_PARTITION_3_SORT_TIME = None
+    G.TLMD_SORTED_PACKAGES = None
+    G.TLMD_PARTITION_1_CART_STAGE_TIME = None
+    G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
+    G.TLMD_PARTITION_3_CART_STAGE_TIME = None
+    G.TLMD_OUTBOUND_PACKAGES = None
+    G.I=1
+    G.J=1
+    G.K=1
+    G.PASSED_OVER_PALLETS_1 = None
+    G.PASSED_OVER_PALLETS_2 = None
+    G.PASSED_OVER_PALLETS_3 = None
+
+    G.TOTAL_LINEHAUL_A_PACKAGES = None
+    G.TOTAL_LINEHAUL_B_PACKAGES = None
+    G.TOTAL_LINEHAUL_C_PACKAGES = None
+
+    G.USPS_LINEHAUL_A_PACKAGES = None
+    G.USPS_LINEHAUL_B_PACKAGES = None
+    G.USPS_LINEHAUL_C_PACKAGES = None
+
+    G.UPSN_LINEHAUL_A_PACKAGES = None
+    G.UPSN_LINEHAUL_B_PACKAGES = None
+    G.UPSN_LINEHAUL_C_PACKAGES = None
+
+    G.FDEG_LINEHAUL_A_PACKAGES = None
+    G.FDEG_LINEHAUL_B_PACKAGES = None
+    G.FDEG_LINEHAUL_C_PACKAGES = None
+
+    G.FDE_LINEHAUL_A_PACKAGES = None
+    G.FDE_LINEHAUL_B_PACKAGES = None
+    G.FDE_LINEHAUL_C_PACKAGES = None
+
+    G.TLMD_LINEHAUL_A_PACKAGES = None
+    G.TLMD_LINEHAUL_B_PACKAGES = None
+    G.TLMD_LINEHAUL_C_PACKAGES = None
+
+    G.TLMD_LINEHAUL_TFC_PACKAGES=None
+
+    G.LINEHAUL_C_TIME = None
+    G.LINEHAUL_TFC_TIME = None
+
+    G.TOTAL_PACKAGES_UPSN = None
+    G.TOTAL_PACKAGES_USPS = None
+    G.TOTAL_PACKAGES_FDEG = None
+    G.TOTAL_PACKAGES_FDE = None
+    G.UPSN_PALLETS = None
+    G.USPS_PALLETS = None
+    G.FDEG_PALLETS = None
+    G.FDE_PALLETS = None
+    G.UPSN_SORT_TIME = None
+    G.USPS_SORT_TIME = None
+    G.FDEG_SORT_TIME = None
+    G.FDE_SORT_TIME = None
+
+    G.TOTAL_CARTS_TLMD = None
+    G.PASSED_OVER_PACKAGES = None
+
+    del sortation_center    
+    gc.collect()
 
     return results
 

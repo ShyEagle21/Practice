@@ -1,0 +1,325 @@
+Trial 9: Comparison of process execution between processes with and without variance. Updated the distribution of team members based on the normalization of the optimal number of hours. Minor changes from Trial 8. Run 10/21/24.
+
+Process Variance =10% of rate
+
+feature_values = {
+    'yesterday_total_packages': 8500,
+    'RAFT_known_shipped_pkg_count': 2500,
+    'RAFT_predicted_carryover_pkg_count': 28,
+    'RAFT_predicted_total_handoff_pkg_count': 3500,
+    'Day of Week_Sunday': 0,
+    'Day of Week_Monday': 1,
+    'Day of Week_Tuesday': 0,
+    'Day of Week_Wednesday': 0,
+    'Day of Week_Thursday': 0,
+    'Day of Week_Friday': 0,
+    'Day of Week_Saturday': 0,
+    'Promotion': 0,
+    'TMAX': 36.2,
+    'TMIN': 31.8,
+    'AWND': 9.87,
+    'PRCP': 0.912,
+    'SNOW': 6.14
+        }
+
+### Labor Allocations ###
+night_total_tm = 20
+
+night_tm_pit_unload = 2
+night_tm_pit_induct = 4 # must be fewer than 8 or whatever the number of induct spaces is
+night_tm_nonpit_split = 1  # must be 1
+night_tm_nonpit_NC = 2
+night_tm_nonpit_buffer = 11
+
+#NIGHTS TLMD SORT ALLOCATION
+night_tm_TLMD_induct = 3  #must be 6 or fewer
+night_tm_TLMD_induct_stage = 1
+night_tm_TLMD_picker = 4  #Must be 4
+night_tm_TLMD_sort = 12
+
+#NIGHTS TLMD STAGE ALLOCATION
+night_tm_TLMD_stage = 20
+night_tm_TLMD_handoff = 20
+
+day_total_tm = 25
+
+#DAYS INBOUND INDUCT ALLOCATION
+day_tm_pit_unload = 3 
+day_tm_pit_induct = 5 # must be fewer than 8 or whatever the number of induct spaces is
+day_tm_nonpit_split = 1   # must be 1
+day_tm_nonpit_NC = 3
+day_tm_nonpit_buffer = 13
+
+#NIGHTS TLMD SORT ALLOCATION
+day_tm_TLMD_induct = 4 # must be 6 or fewer
+day_tm_TLMD_induct_stage = 1
+day_tm_TLMD_picker = 4  #Must be 4
+day_tm_TLMD_sort = 16
+
+
+#DAYSS TLMD STAGE ALLOCATION
+day_tm_TLMD_stage = 25
+day_tm_TLMD_handoff = 25
+
+
+USPS_Fluid_Status = False
+UPSN_Fluid_Status = False
+FDEG_Fluid_Status = False
+FDE_Fluid_Status = False
+
+-------------------------------------------------------------------------------
+SIMULATION SET UP
+-------------------------------------------------------------------------------
+
+class G:
+    # Constants (adjust as needed)
+    Process_Variance = 0.1
+    UNLOADING_RATE = 60/15  # minutes per pallet
+    UNLOADING_VARIANCE = Process_Variance*UNLOADING_RATE  # 10% variance
+    INDUCT_STAGE_RATE = 60/22  # minutes per pallet
+    INDUCT_STAGE_VARIANCE = Process_Variance*INDUCT_STAGE_RATE  # 10% variance
+    INDUCTION_RATE = 60/800  # minutes per package
+    INDUCTION_VARIANCE = Process_Variance*INDUCTION_RATE  # 10% variance
+    SPLITTER_RATE = 1/60  # minutes per package
+    SPLITTER_VARIANCE = Process_Variance*SPLITTER_RATE  # 10% variance
+    TLMD_BUFFER_SORT_RATE = 60/148  # minutes per package
+    TLMD_BUFFER_SORT_VARIANCE = Process_Variance*TLMD_BUFFER_SORT_RATE  # 10% variance
+    TLMD_PARTITION_STAGE_RATE = 1  # minutes per pallet
+    TLMD_PARTITION_STAGE_VARIANCE = Process_Variance*TLMD_PARTITION_STAGE_RATE  # 10% variance
+    TLMD_INDUCT_STAGE_RATE = 60/15  # minutes per pallet
+    TLMD_INDUCT_STAGE_VARIANCE = Process_Variance*TLMD_INDUCT_STAGE_RATE  # 10% variance
+    TLMD_INDUCTION_RATE = 60/300  # minutes per package
+    TLMD_INDUCTION_VARIANCE = Process_Variance*TLMD_INDUCTION_RATE  # 10% variance
+    TLMD_FINAL_SORT_RATE = 60/84  # minutes per package
+    TLMD_FINAL_SORT_VARIANCE = Process_Variance*TLMD_FINAL_SORT_RATE  # 10% variance
+    TLMD_CART_STAGE_RATE = 60/84  # minutes per cart
+    TLMD_CART_STAGE_VARIANCE = Process_Variance*TLMD_CART_STAGE_RATE  # 10% variance
+    TLMD_CART_HANDOFF_RATE = 60/22  # minutes per pallet
+    TLMD_CART_HANDOFF_VARIANCE = Process_Variance*TLMD_CART_HANDOFF_RATE  # 10% variance
+    CART_STAGE_RATE = 2  # minutes per cart
+    CART_STAGE_VARIANCE = Process_Variance*CART_STAGE_RATE  # 10% variance
+    TLMD_CART_HANDOFF_RATE = 2  # minutes per cart
+    TLMD_CART_HANDOFF_VARIANCE = Process_Variance* TLMD_CART_HANDOFF_RATE # 10% variance
+    NATIONAL_CARRIER_SORT_RATE = 60/148  # minutes per package
+    NATIONAL_CARRIER_SORT_VARIANCE = Process_Variance*NATIONAL_CARRIER_SORT_RATE  # 10% variance
+    NC_PALLET_STAGING_RATE = 60/120  # minutes per pallet
+    NC_PALLET_STAGING_VARIANCE = Process_Variance*NC_PALLET_STAGING_RATE  # 10% variance
+    NATIONAL_CARRIER_FLUID_PICK_RATE = 1/60  # minutes per package
+    NATIONAL_CARRIER_FLUID_PICK_VARIANCE = Process_Variance*NATIONAL_CARRIER_FLUID_PICK_RATE  # 10% variance
+    NATIONAL_CARRIER_FLUID_LOAD_RATE = 60/120  # minutes per package
+    NATIONAL_CARRIER_FLUID_LOAD_VARIANCE = Process_Variance*NATIONAL_CARRIER_FLUID_LOAD_RATE  # 10% variance
+    
+
+
+    OUTBOUND_NC_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
+    PARTITION_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
+    TLMD_PARTITION_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
+    NC_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
+    TLMD_CART_MAX_PACKAGES = 20  # Max packages per cart
+    TOTAL_PACKAGES = None  # Total packages to be processed
+    TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
+    TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
+    TLMD_AB_INDUCT_TIME = None
+    TLMD_C_INDUCT_TIME = None
+    TLMD_STAGED_PACKAGES = None
+    TLMD_PARTITION_1_PACKAGES = None
+    TLMD_PARTITION_2_PACKAGES = None
+    TLMD_PARTITION_3AB_PACKAGES = None
+    TLMD_PARTITION_3_PACKAGES = None
+    TOTAL_PALLETS_TLMD = None
+    TLMD_PARTITION_1_SORT_TIME = None
+    TLMD_PARTITION_2_SORT_TIME = None 
+    TLMD_PARTITION_3AB_SORT_TIME = None
+    TLMD_PARTITION_3_SORT_TIME = None
+    TLMD_SORTED_PACKAGES = None
+    TLMD_PARTITION_1_CART_STAGE_TIME = None
+    TLMD_PARTITION_2_CART_STAGE_TIME = None 
+    TLMD_PARTITION_3_CART_STAGE_TIME = None
+    TLMD_OUTBOUND_PACKAGES = None
+    I=1
+    J=1
+    K=1
+    PASSED_OVER_PALLETS_1 = None
+    PASSED_OVER_PALLETS_2 = None
+    PASSED_OVER_PALLETS_3 = None
+
+    TOTAL_LINEHAUL_A_PACKAGES = None
+    TOTAL_LINEHAUL_B_PACKAGES = None
+    TOTAL_LINEHAUL_C_PACKAGES = None
+
+    USPS_LINEHAUL_A_PACKAGES = None
+    USPS_LINEHAUL_B_PACKAGES = None
+    USPS_LINEHAUL_C_PACKAGES = None
+
+    UPSN_LINEHAUL_A_PACKAGES = None
+    UPSN_LINEHAUL_B_PACKAGES = None
+    UPSN_LINEHAUL_C_PACKAGES = None
+
+    FDEG_LINEHAUL_A_PACKAGES = None
+    FDEG_LINEHAUL_B_PACKAGES = None
+    FDEG_LINEHAUL_C_PACKAGES = None
+
+    FDE_LINEHAUL_A_PACKAGES = None
+    FDE_LINEHAUL_B_PACKAGES = None
+    FDE_LINEHAUL_C_PACKAGES = None
+
+    TLMD_LINEHAUL_A_PACKAGES = None
+    TLMD_LINEHAUL_B_PACKAGES = None
+    TLMD_LINEHAUL_C_PACKAGES = None
+
+    TLMD_LINEHAUL_TFC_PACKAGES=None
+
+    LINEHAUL_C_TIME = None
+    LINEHAUL_TFC_TIME = None
+
+    TOTAL_PACKAGES_UPSN = None
+    TOTAL_PACKAGES_USPS = None
+    TOTAL_PACKAGES_FDEG = None
+    TOTAL_PACKAGES_FDE = None
+    UPSN_PALLETS = None
+    USPS_PALLETS = None
+    FDEG_PALLETS = None
+    FDE_PALLETS = None
+    UPSN_SORT_TIME = None
+    USPS_SORT_TIME = None
+    FDEG_SORT_TIME = None
+    FDE_SORT_TIME = None
+
+    TOTAL_CARTS_TLMD = None
+
+    PARTITION_1_RATIO = 0.50  # Ratio of packages to go to partition 1
+    PARTITION_2_RATIO = 0.35  # Ratio of packages to go to partition 2
+    PARTITION_3_RATIO = 0.15  # Ratio of packages to go to partition 3
+
+    USPS_DEPARTURE_TIME = [780]  # minutes
+    UPSN_DEPARTURE_TIME = [1440]  # minutes
+    FDEG_DEPARTURE_TIME = [180, 390]  # minutes
+    FDE_DEPARTURE_TIME = [330]  # minutes
+
+class Package:
+    def __init__(self, tracking_number, pallet_id, scac):
+        self.tracking_number = tracking_number
+        self.pallet_id = pallet_id
+        self.scac = scac
+        self.current_queue = None
+
+class Pallet:
+    def __init__(self, env, pallet_id, packages, pkg_received_utc_ts):
+        self.env = env
+        self.pkg_received_utc_ts = pkg_received_utc_ts
+        self.pallet_id = pallet_id
+        self.packages = [Package(pkg[0], pallet_id, pkg[1]) for pkg in packages]
+        self.current_queue = None
+        self.remaining_packages = len(packages)  # Track remaining packages
+
+class TLMD_Pallet:
+    def __init__(self, env, pallet_id, packages, built_time):
+        self.env = env
+        self.built_time = built_time
+        self.pallet_id = pallet_id
+        self.packages = packages
+        self.current_packages = len(packages)  # Track remaining packages
+
+    def add_package(self, package):
+        self.packages.append(package)
+        self.current_packages = len(self.packages)  # Update the count
+        #print(f'Package {package.tracking_number} added to pallet {self.pallet_id} at {self.env.now}')
+        #print(f'Pallet currently contains {self.current_packages} packages')
+
+class TLMD_Cart:
+    def __init__(self, env, cart_id, packages, built_time):
+        self.env = env
+        self.built_time = built_time
+        self.cart_id = cart_id
+        self.packages = packages
+        self.current_packages = len(packages)  # Tracks packages
+    
+    def add_package(self, package):
+        self.packages.append(package)
+        self.current_packages = len(self.packages)  # Update the count
+        #print(f"Package {package.tracking_number} added to cart {self.cart_id} at {self.env.now}")
+        #print(f'Cart currently contains {self.current_packages} packages')
+
+class National_Carrier_Pallet:
+    def __init__(self, env, pallet_id, packages, scac, built_time):
+        self.env = env
+        self.built_time = built_time
+        self.pallet_id = pallet_id
+        self.packages = packages
+        self.scac = scac
+        self.current_packages = len(packages)  # Track remaining packages
+
+    def add_package(self, package):
+        self.packages.append(package)
+        self.current_packages = len(self.packages)  # Update the count
+        #print(f"Package {package.tracking_number} added to pallet {self.pallet_id} at {self.env.now}")
+        #print(f'Pallet currently contains {self.current_packages} packages')
+
+def manage_resources(env, sortation_center, current_resource, 
+                     night_tm_pit_unload, 
+                        night_tm_pit_induct, 
+                        night_tm_nonpit_split, 
+                        night_tm_nonpit_NC, 
+                        night_tm_nonpit_buffer,
+                        night_tm_TLMD_induct,
+                        night_tm_TLMD_induct_stage,
+                        night_tm_TLMD_picker,
+                        night_tm_TLMD_sort,
+                        night_tm_TLMD_stage,
+                        day_tm_pit_unload,
+                        day_tm_pit_induct,
+                        day_tm_nonpit_split,
+                        day_tm_nonpit_NC,
+                        day_tm_nonpit_buffer,
+                        day_tm_TLMD_induct,
+                        day_tm_TLMD_induct_stage,
+                        day_tm_TLMD_picker,
+                        day_tm_TLMD_sort,
+                        day_tm_TLMD_stage):
+    
+        yield env.timeout(30)
+        # Start with 1 resource for the first 10 minutes
+        sortation_center.current_resource['tm_pit_unload'] = simpy.Resource(env, capacity=night_tm_pit_unload)
+        sortation_center.current_resource['tm_pit_induct'] = simpy.PriorityResource(env, capacity=night_tm_pit_induct)
+        sortation_center.current_resource['tm_nonpit_split'] = simpy.Resource(env, capacity=night_tm_nonpit_split)
+        sortation_center.current_resource['tm_nonpit_NC'] = simpy.PriorityResource(env, capacity=night_tm_nonpit_NC)
+        sortation_center.current_resource['tm_nonpit_buffer'] = simpy.PriorityResource(env, capacity=night_tm_nonpit_buffer)
+        sortation_center.current_resource['tm_TLMD_induct'] = simpy.PriorityResource(env, capacity=night_tm_TLMD_induct)
+        sortation_center.current_resource['tm_TLMD_induct_stage'] = simpy.PriorityResource(env, capacity=night_tm_TLMD_induct_stage)
+        sortation_center.current_resource['tm_TLMD_picker'] = simpy.Resource(env, capacity=night_tm_TLMD_picker)
+        sortation_center.current_resource['tm_TLMD_sort'] = simpy.Resource(env, capacity=night_tm_TLMD_sort)
+        sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=night_tm_TLMD_stage)
+
+        #print(f"Using nightshift resources at time {env.now}")
+        yield env.timeout(600)
+
+        #print(f"Downtime starting at time {env.now}")
+        yield env.timeout(210)
+        #print(f"Downtime ending at time {env.now}")
+        #print(f'Using dayshift resources at time {env.now}')
+
+        # Switch to 5 resources for the next 30 minutes
+        sortation_center.current_resource['tm_pit_unload'] = simpy.Resource(env, capacity=day_tm_pit_unload)
+        sortation_center.current_resource['tm_pit_induct'] = simpy.PriorityResource(env, capacity=day_tm_pit_induct)
+        sortation_center.current_resource['tm_nonpit_split'] = simpy.Resource(env, capacity=day_tm_nonpit_split)
+        sortation_center.current_resource['tm_nonpit_NC'] = simpy.PriorityResource(env, capacity=day_tm_nonpit_NC)
+        sortation_center.current_resource['tm_nonpit_buffer'] = simpy.PriorityResource(env, capacity=day_tm_nonpit_buffer)
+        sortation_center.current_resource['tm_TLMD_induct'] = simpy.PriorityResource(env, capacity=day_tm_TLMD_induct)
+        sortation_center.current_resource['tm_TLMD_induct_stage'] = simpy.PriorityResource(env, capacity=day_tm_TLMD_induct_stage)
+        sortation_center.current_resource['tm_TLMD_picker'] = simpy.Resource(env, capacity=day_tm_TLMD_picker)
+        sortation_center.current_resource['tm_TLMD_sort'] = simpy.Resource(env, capacity=day_tm_TLMD_sort)
+        sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=day_tm_TLMD_stage)
+        yield env.timeout(600)
+        
+def make_resources_unavailable(env, sortation_center, start, end):
+    yield env.timeout(start)
+    #print(f'Resources unavailable at {env.now}')
+    sortation_center.resources_available = False
+    yield env.timeout(end - start)
+    #print(f'Resources available at {env.now}')
+    sortation_center.resources_available = True
+
+def linehaul_C_arrival(env, sortation_center):
+    yield env.timeout(G.LINEHAUL_C_TIME)
+    #print(f'Linehaul C arrival at {env.now}')
+    sortation_center.LHC_flag = True

@@ -14,7 +14,7 @@ def simulation_generator(Train, feature_values, model_file_path = 'trained_model
     # Example feature values
 
     predicted_volume = vp.predict_volume(model, feature_values)
-    print(f'Predicted Total Volume: {predicted_volume}')
+    #print(f'Predicted Total Volume: {predicted_volume}')
 
     df_package_distribution, TFC_vol, TFC_arrival_minutes = dg.generate_demand('linehaul_all_predict - Copy.csv', 3858, predicted_volume, '2024-09-01')
 
@@ -37,6 +37,9 @@ def simulation_generator(Train, feature_values, model_file_path = 'trained_model
     total_assigned_packages = sum(carrier_packages.values())
     if total_assigned_packages != total_packages:
         difference = total_packages - total_assigned_packages
+        bonus_carrier = random.choice(list(carrier_packages.keys()))
+        while bonus_carrier == 'FDE':
+            bonus_carrier = random.choice(list(carrier_packages.keys()))
         carrier_packages[random.choice(list(carrier_packages.keys()))] += difference
         carrier_packages['TLMD'] = carrier_packages['TLMD'] - TFC_vol
 
@@ -165,7 +168,7 @@ def simulation_generator(Train, feature_values, model_file_path = 'trained_model
     df = pd.concat([df, df_new_packages], ignore_index=True)
 
 
-    return df
+    return df, df_package_distribution, TFC_arrival_minutes
     
 
 
