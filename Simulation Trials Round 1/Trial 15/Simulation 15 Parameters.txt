@@ -1,0 +1,64 @@
+feature_values = {
+    'yesterday_total_packages': 8500,
+    'RAFT_known_shipped_pkg_count': 2500,
+    'RAFT_predicted_carryover_pkg_count': 28,
+    'RAFT_predicted_total_handoff_pkg_count': 3500,
+    'Day of Week_Sunday': 0,
+    'Day of Week_Monday': 1,
+    'Day of Week_Tuesday': 0,
+    'Day of Week_Wednesday': 0,
+    'Day of Week_Thursday': 0,
+    'Day of Week_Friday': 0,
+    'Day of Week_Saturday': 0,
+    'Promotion': 0,
+    'TMAX': 36.2,
+    'TMIN': 31.8,
+    'AWND': 9.87,
+    'PRCP': 0.912,
+    'SNOW': 6.14
+        }
+
+### Labor Allocations ###
+night_total_tm = 18
+
+night_tm_pit_unload = 2
+night_tm_pit_induct = 6 # must be fewer than 8 or whatever the number of induct spaces is
+night_tm_nonpit_split = 1  # must be 1
+night_tm_nonpit_NC = 3
+night_tm_nonpit_buffer = 6
+
+#NIGHTS TLMD SORT ALLOCATION
+night_tm_TLMD_induct = 2  #must be 6 or fewer
+night_tm_TLMD_induct_stage = 1
+night_tm_TLMD_picker = 4  #Must be 4
+night_tm_TLMD_sort = 11
+
+#NIGHTS TLMD STAGE ALLOCATION
+night_tm_TLMD_stage = 18
+night_tm_TLMD_handoff = 18
+
+day_total_tm = 20
+
+#DAYS INBOUND INDUCT ALLOCATION
+day_tm_pit_unload = 2 
+day_tm_pit_induct = 5 # must be fewer than 8 or whatever the number of induct spaces is
+day_tm_nonpit_split = 1   # must be 1
+day_tm_nonpit_NC = 3
+day_tm_nonpit_buffer = 9
+
+#NIGHTS TLMD SORT ALLOCATION
+day_tm_TLMD_induct = 2 # must be 6 or fewer
+day_tm_TLMD_induct_stage = 1
+day_tm_TLMD_picker = 4  #Must be 4
+day_tm_TLMD_sort = 13
+
+
+#DAYSS TLMD STAGE ALLOCATION
+day_tm_TLMD_stage = 20
+day_tm_TLMD_handoff = 20
+
+
+USPS_Fluid_Status = False
+UPSN_Fluid_Status = False
+FDEG_Fluid_Status = False
+FDE_Fluid_Status = False

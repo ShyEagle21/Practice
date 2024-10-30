@@ -3,6 +3,7 @@ import demand_generator as dg
 import numpy as np
 import pandas as pd
 import random
+import math
 
 def simulation_generator(Train, feature_values, model_file_path = 'trained_model.pkl', csv_train_file_path=None):
     if Train:
@@ -39,9 +40,7 @@ def simulation_generator(Train, feature_values, model_file_path = 'trained_model
         difference = total_packages - total_assigned_packages
         filtered_carriers = [key for key in carrier_packages.keys() if key != "FDE"]
         bonus_carrier = random.choice(filtered_carriers)
-        while bonus_carrier == 'FDE':
-            bonus_carrier = random.choice(list(carrier_packages.keys()))
-        carrier_packages[random.choice(list(carrier_packages.keys()))] += difference
+        carrier_packages[bonus_carrier] += difference
         carrier_packages['TLMD'] = carrier_packages['TLMD'] - TFC_vol
 
     df_carrier_breakdown = pd.DataFrame(list(carrier_packages.items()), columns=['Organization', 'Packages'])
@@ -75,12 +74,30 @@ def simulation_generator(Train, feature_values, model_file_path = 'trained_model
             start_index += predicted_truck_volume
             
             # Create a list of pallets for the current truck
+            if i >=11:
+                count_tlmd = truck_packages.count('TLMD')
+                count_NC = len(truck_packages) - count_tlmd
+                tlmd_pallet = math.ceil(count_tlmd / 55)
+                NC_pallet = math.ceil(count_NC / 55)
+                if tlmd_pallet + NC_pallet > num_pallets:
+                    num_pallets = tlmd_pallet + NC_pallet
+
             truck_pallets = [[] for _ in range(num_pallets)]
             
             # Randomly assign packages to pallets on the current truck
-            for package in truck_packages:
-                pallet_index = np.random.randint(0, num_pallets)
-                truck_pallets[pallet_index].append(package)
+            if i >= 11:
+                for package in truck_packages:
+                    if package == 'TLMD':
+                        pallet_index = np.random.randint(0, tlmd_pallet)
+                        truck_pallets[pallet_index].append(package)
+                    else:
+                        pallet_index = np.random.randint(tlmd_pallet, num_pallets)
+                        truck_pallets[pallet_index].append(package)
+            else:
+                for package in truck_packages:
+                    pallet_index = np.random.randint(0, num_pallets)
+                    truck_pallets[pallet_index].append(package)
+                
             
             # Count the number of packages per organization on each pallet
             pallet_counts = []
@@ -129,7 +146,9 @@ def simulation_generator(Train, feature_values, model_file_path = 'trained_model
             linehaul = 'C'
         else:
             linehaul = 'Unknown'  # Handle unexpected truck numbers
-        
+
+        ##########################################
+        #need to determinme how to assign packages to pallets. Currently truck_data has the pallets correct, but it is not assigning the packages to just tlmd or NC.
         for pallet in truck['pallets']:
             scac_values = []
             for org, num_packages in pallet.items():

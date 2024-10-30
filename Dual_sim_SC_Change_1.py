@@ -1,6 +1,6 @@
 import math
 import numpy as np
-import sim_generator as sg
+import sim_generator_LH_C_SEP as sg_c
 import matplotlib.pyplot as plt
 import pandas as pd
 import simpy
@@ -420,10 +420,23 @@ class Sortation_Center:
             #print(f'Pallet {pallet.pallet_id} unloaded at {self.env.now}')
             yield self.queues['queue_inbound_staging'].put(pallet)
             self.env.process(self.move_to_induct_staging(pallet))
-
+####
     def move_to_induct_staging(self, pallet):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
+
+        if self.LHC_flag and self.partition_2_flag:
+            with self.current_resource['tm_TLMD_induct'].request(priority=1) as req: 
+                yield req
+                yield self.queues['queue_inbound_staging'].get()
+                if self.var_status == True:
+                    process_time = np.random.normal(G.INDUCT_STAGE_RATE, G.INDUCT_STAGE_RATE*G.Process_Variance)
+                elif self.var_status == False:
+                    process_time = G.INDUCT_STAGE_RATE
+                yield self.env.timeout(max(0.05,process_time))
+                pallet.current_queue = 'queue_tlmd_3_staged_pallet'
+                yield self.queues['queue_tlmd_3_staged_pallet'].put(pallet)
+                self.env.process(self.feed_TLMD_induct_staging())
 
         with self.current_resource['tm_pit_induct'].request(priority=1) as req: 
             yield req
@@ -440,7 +453,7 @@ class Sortation_Center:
                 package.current_queue = 'queue_induct_staging_packages'
                 yield self.queues['queue_induct_staging_packages'].put(package)
                 self.env.process(self.induct_package(package, pallet))
-
+####
     def induct_package(self, package, pallet): 
 
         while self.LHC_flag and not self.partition_2_flag:
@@ -1391,7 +1404,7 @@ def Simulation_Machine(feature_values,
     
     G.Process_Variance = variance
     
-    df_pallets, df_package_distribution, TFC_arrival_minutes = sg.simulation_generator(False, feature_values)
+    df_pallets, df_package_distribution, TFC_arrival_minutes = sg_c.simulation_generator(False, feature_values)
 
     pallet_info = df_pallets.groupby('Pallet').agg(
         num_packages=('package_tracking_number', 'count'),
@@ -1426,7 +1439,7 @@ def Simulation_Machine(feature_values,
     
  
 
-    var_status = True
+    var_status = False
     # Setup inbound induct simulation
     env, sortation_center = setup_simulation(pallet_info, 
                                              night_tm_pit_unload, 
@@ -1463,10 +1476,10 @@ def Simulation_Machine(feature_values,
     #print("End Process")
     #print(len(G.TLMD_STAGED_PACKAGES))
 
-    print("Variability")
+    print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
-    results_var = {
+    results = {
     # Total Packages
     "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
     "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
@@ -1602,7 +1615,7 @@ def Simulation_Machine(feature_values,
     del sortation_center    
     gc.collect()
     
-    var_status = False
+    var_status = True
     env, sortation_center = setup_simulation(pallet_info, 
                                             night_tm_pit_unload, 
                                             night_tm_pit_induct, 
@@ -1632,10 +1645,10 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
-    #plot_metrics(sortation_center.metrics)
+    print("Variability")
+    plot_metrics(sortation_center.metrics)
 
-    results = {
+    results_var = {
     # Total Packages
     "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
     "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
