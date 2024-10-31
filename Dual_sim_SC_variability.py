@@ -1810,7 +1810,7 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
+    #print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
     results_var_1 = {
@@ -2154,7 +2154,7 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
+    #print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
     results_var_2 = {
@@ -2322,7 +2322,7 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
+    #print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
     results_var_25 = {
@@ -2490,7 +2490,7 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
+    #print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
     results_var_3 = {
@@ -2658,7 +2658,7 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
+    #print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
     results_var_35 = {
@@ -2826,7 +2826,7 @@ def Simulation_Machine(feature_values,
                                             )   
     
     env.run(until=1200)
-    print("No Variability")
+    #print("No Variability")
     #plot_metrics(sortation_center.metrics)
 
     results_var_4 = {
