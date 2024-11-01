@@ -1638,7 +1638,7 @@ def Simulation_Machine(feature_values,
     
     env.run(until=1200)
     print("No Variability")
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages

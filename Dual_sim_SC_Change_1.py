@@ -50,7 +50,7 @@ class G:
     NATIONAL_CARRIER_FLUID_PICK_VARIANCE = Process_Variance * NATIONAL_CARRIER_FLUID_PICK_RATE
     NATIONAL_CARRIER_FLUID_LOAD_RATE = 60/120  # minutes per package
     NATIONAL_CARRIER_FLUID_LOAD_VARIANCE = Process_Variance * NATIONAL_CARRIER_FLUID_LOAD_RATE  
-    TLMD_C_PARTITION_STAGE_RATE = 60/6.5
+    TLMD_C_PARTITION_STAGE_RATE = 60/30
     TLMD_C_PARTITION_STAGE_VARIANCE = Process_Variance * TLMD_C_PARTITION_STAGE_RATE
     
 
@@ -1496,7 +1496,7 @@ def Simulation_Machine(feature_values,
     #print(len(G.TLMD_STAGED_PACKAGES))
 
     #print("Variability")
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages
