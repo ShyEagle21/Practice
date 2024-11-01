@@ -1,3 +1,9 @@
+###########################################################################
+#Simulation of sortation center processes with a probabilistic demand arrival and Varaiability analysis
+# Description: This file contains the simulation model for the sortation center simulation.
+# By: Andrew Fenstermacher
+# File should be used to compare the effects of variance on the sortation center processes with the lens of evaluating for TLMD Carryover
+
 import math
 import numpy as np
 import sim_generator as sg
@@ -8,47 +14,47 @@ import gc
 
 class G:
     # Constants (adjust as needed)
-    Process_Variance = None
+    Process_Variance = .1
     UNLOADING_RATE = 60/15  # minutes per pallet
-    UNLOADING_VARIANCE = Process_Variance  # 10% variance
+    UNLOADING_VARIANCE = Process_Variance * UNLOADING_RATE 
     INDUCT_STAGE_RATE = 60/22  # minutes per pallet
-    INDUCT_STAGE_VARIANCE = Process_Variance  # 10% variance
+    INDUCT_STAGE_VARIANCE = Process_Variance * INDUCT_STAGE_RATE 
     INDUCTION_RATE = 60/800  # minutes per package
-    INDUCTION_VARIANCE = Process_Variance  # 10% variance
-    SPLITTER_RATE = 1/60  # minutes per package
-    SPLITTER_VARIANCE = Process_Variance  # 10% variance
-    TLMD_BUFFER_SORT_RATE = 60/148  # minutes per package
-    TLMD_BUFFER_SORT_VARIANCE = Process_Variance  # 10% variance
-    TLMD_PARTITION_STAGE_RATE = 1  # minutes per pallet
-    TLMD_PARTITION_STAGE_VARIANCE = Process_Variance  # 10% variance
+    INDUCTION_VARIANCE = Process_Variance* INDUCTION_RATE 
+    SPLITTER_RATE = 60/1049  # minutes per package
+    SPLITTER_VARIANCE = Process_Variance* SPLITTER_RATE 
+    TLMD_BUFFER_SORT_RATE = 60/445  # minutes per package
+    TLMD_BUFFER_SORT_VARIANCE = Process_Variance * TLMD_BUFFER_SORT_RATE 
+    TLMD_PARTITION_STAGE_RATE = 60/13  # minutes per pallet
+    TLMD_PARTITION_STAGE_VARIANCE = Process_Variance *TLMD_PARTITION_STAGE_RATE 
     TLMD_INDUCT_STAGE_RATE = 60/15  # minutes per pallet
-    TLMD_INDUCT_STAGE_VARIANCE = Process_Variance  # 10% variance
+    TLMD_INDUCT_STAGE_VARIANCE = Process_Variance * TLMD_INDUCT_STAGE_RATE 
     TLMD_INDUCTION_RATE = 60/300  # minutes per package
-    TLMD_INDUCTION_VARIANCE = Process_Variance  # 10% variance
+    TLMD_INDUCTION_VARIANCE = Process_Variance * TLMD_INDUCTION_RATE 
     TLMD_FINAL_SORT_RATE = 60/84  # minutes per package
-    TLMD_FINAL_SORT_VARIANCE = Process_Variance  # 10% variance
+    TLMD_FINAL_SORT_VARIANCE = Process_Variance * TLMD_FINAL_SORT_RATE
     TLMD_CART_STAGE_RATE = 60/84  # minutes per cart
-    TLMD_CART_STAGE_VARIANCE = Process_Variance  # 10% variance
+    TLMD_CART_STAGE_VARIANCE = Process_Variance * TLMD_CART_STAGE_RATE 
     TLMD_CART_HANDOFF_RATE = 60/22  # minutes per pallet
-    TLMD_CART_HANDOFF_VARIANCE = Process_Variance  # 10% variance
+    TLMD_CART_HANDOFF_VARIANCE = Process_Variance * TLMD_CART_HANDOFF_RATE 
     CART_STAGE_RATE = 2  # minutes per cart
-    CART_STAGE_VARIANCE = Process_Variance  # 10% variance
+    CART_STAGE_VARIANCE = Process_Variance *  CART_STAGE_RATE 
     TLMD_CART_HANDOFF_RATE = 2  # minutes per cart
-    TLMD_CART_HANDOFF_VARIANCE = Process_Variance  # 10% variance
+    TLMD_CART_HANDOFF_VARIANCE = Process_Variance  * TLMD_CART_HANDOFF_RATE 
     NATIONAL_CARRIER_SORT_RATE = 60/148  # minutes per package
-    NATIONAL_CARRIER_SORT_VARIANCE = Process_Variance  # 10% variance
+    NATIONAL_CARRIER_SORT_VARIANCE = Process_Variance * NATIONAL_CARRIER_SORT_RATE
     NC_PALLET_STAGING_RATE = 60/120  # minutes per pallet
-    NC_PALLET_STAGING_VARIANCE = Process_Variance  # 10% variance
+    NC_PALLET_STAGING_VARIANCE = Process_Variance * NC_PALLET_STAGING_RATE
     NATIONAL_CARRIER_FLUID_PICK_RATE = 1/60  # minutes per package
-    NATIONAL_CARRIER_FLUID_PICK_VARIANCE = Process_Variance  # 10% variance
+    NATIONAL_CARRIER_FLUID_PICK_VARIANCE = Process_Variance * NATIONAL_CARRIER_FLUID_PICK_RATE
     NATIONAL_CARRIER_FLUID_LOAD_RATE = 60/120  # minutes per package
-    NATIONAL_CARRIER_FLUID_LOAD_VARIANCE = Process_Variance  # 10% variance
+    NATIONAL_CARRIER_FLUID_LOAD_VARIANCE = Process_Variance * NATIONAL_CARRIER_FLUID_LOAD_RATE  
     
 
 
     OUTBOUND_NC_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
-    PARTITION_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
-    TLMD_PARTITION_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
+    PARTITION_PALLET_MAX_PACKAGES = 65  # Max packages per pallet
+    TLMD_PARTITION_PALLET_MAX_PACKAGES = 65  # Max packages per pallet
     NC_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
     TLMD_CART_MAX_PACKAGES = 20  # Max packages per cart
     TOTAL_PACKAGES = None  # Total packages to be processed
@@ -412,7 +418,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_inbound_truck'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.UNLOADING_RATE, G.UNLOADING_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.UNLOADING_RATE, G.UNLOADING_VARIANCE)
             elif self.var_status == False:
                 process_time = G.UNLOADING_RATE
             yield self.env.timeout(max(0.05,process_time))  # Unloading time
@@ -429,7 +435,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_inbound_staging'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.INDUCT_STAGE_RATE, G.INDUCT_STAGE_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.INDUCT_STAGE_RATE, G.INDUCT_STAGE_VARIANCE)
             elif self.var_status == False:
                 process_time = G.INDUCT_STAGE_RATE
             yield self.env.timeout(max(0.05,process_time))  # Unloading time
@@ -450,7 +456,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_induct_staging_packages'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.INDUCTION_RATE, G.INDUCTION_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.INDUCTION_RATE, G.INDUCTION_VARIANCE)
             elif self.var_status == False:
                 process_time = G.INDUCTION_RATE
             yield self.env.timeout(max(0.01,process_time))
@@ -480,7 +486,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_splitter'].get()
             if self.var_status == True:
-                process_rate = np.random.normal(G.SPLITTER_RATE, G.SPLITTER_RATE*G.Process_Variance)
+                process_rate = np.random.normal(G.SPLITTER_RATE, G.SPLITTER_VARIANCE)
             elif self.var_status == False:
                 process_rate = G.SPLITTER_RATE
             yield self.env.timeout(max(0,process_rate))
@@ -502,7 +508,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_national_carrier_sort"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_SORT_RATE, G.NATIONAL_CARRIER_SORT_RATE * G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_SORT_RATE, G.NATIONAL_CARRIER_SORT_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_SORT_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -619,7 +625,7 @@ class Sortation_Center:
                     #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
                     yield self.queues[staged_queue_name].put(pallet)
                     if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE*G.Process_Variance)
+                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_VARIANCE)
                     elif self.var_status == False:
                         process_time = G.NC_PALLET_STAGING_RATE
                     yield self.env.timeout(max(0.05,process_time))
@@ -649,7 +655,7 @@ class Sortation_Center:
                     #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
                     yield self.queues[staged_queue_name].put(pallet)
                     if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE*G.Process_Variance)
+                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_VARIANCE)
                     elif self.var_status == False:
                         process_time = G.NC_PALLET_STAGING_RATE
                     yield self.env.timeout(max(0.05,process_time))
@@ -680,7 +686,7 @@ class Sortation_Center:
                     #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
                     yield self.queues[staged_queue_name].put(pallet)
                     if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE*G.Process_Variance)
+                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_VARIANCE)
                     elif self.var_status == False:
                         process_time = G.NC_PALLET_STAGING_RATE
                     yield self.env.timeout(max(0.05,process_time))
@@ -711,7 +717,7 @@ class Sortation_Center:
                     #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')                        
                     yield self.queues[staged_queue_name].put(pallet)
                     if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE*G.Process_Variance)
+                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_VARIANCE)
                     elif self.var_status == False:
                         process_time = G.NC_PALLET_STAGING_RATE
                     yield self.env.timeout(max(0.05,process_time))                      
@@ -733,7 +739,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_UPSN_fluid"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -750,7 +756,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_UPSN_truck"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -767,7 +773,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_USPS_fluid"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -784,7 +790,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_USPS_truck"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -802,7 +808,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_FDEG_fluid"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -820,7 +826,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_FDEG_truck"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -837,7 +843,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_FDE_fluid"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -855,7 +861,7 @@ class Sortation_Center:
             yield req
             yield self.queues["queue_FDE_truck"].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_VARIANCE)
             elif self.var_status == False:
                 process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -877,7 +883,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_tlmd_buffer_sort'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_VARIANCE)
             elif self.var_status == False:
                 process_time = G.TLMD_BUFFER_SORT_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -1004,7 +1010,7 @@ class Sortation_Center:
                 #print('No pallets left in any queue')
                 return
             if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_INDUCT_STAGE_RATE, G.TLMD_INDUCT_STAGE_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.TLMD_INDUCT_STAGE_RATE, G.TLMD_INDUCT_STAGE_VARIANCE)
             elif self.var_status == False:
                 process_time = G.TLMD_INDUCT_STAGE_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -1024,7 +1030,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_tlmd_induct_staging_packages'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_INDUCTION_RATE, G.TLMD_INDUCTION_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.TLMD_INDUCTION_RATE, G.TLMD_INDUCTION_VARIANCE)
             elif self.var_status == False:
                 process_time = G.TLMD_INDUCTION_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -1054,7 +1060,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_tlmd_splitter'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.SPLITTER_RATE, G.SPLITTER_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.SPLITTER_RATE, G.SPLITTER_VARIANCE)
             elif self.var_status == False:
                 process_time = G.SPLITTER_RATE
             yield self.env.timeout(max(0.05,process_time))
@@ -1071,7 +1077,7 @@ class Sortation_Center:
             yield req
             yield self.queues['queue_tlmd_final_sort'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_FINAL_SORT_RATE, G.TLMD_FINAL_SORT_RATE*G.Process_Variance)
+                process_time = np.random.normal(G.TLMD_FINAL_SORT_RATE, G.TLMD_FINAL_SORT_VARIANCE)
             elif self.var_status == False:
                 process_time = G.TLMD_FINAL_SORT_RATE
             #print(f'Final Sort Process Rate: {process_time}')
@@ -1386,10 +1392,8 @@ def Simulation_Machine(feature_values,
                         USPS_Fluid_Status,
                         UPSN_Fluid_Status,
                         FDEG_Fluid_Status,
-                        FDE_Fluid_Status,
-                        variance):
+                        FDE_Fluid_Status):
     
-    G.Process_Variance = variance
     
     df_pallets, df_package_distribution, TFC_arrival_minutes = sg.simulation_generator(False, feature_values)
 
