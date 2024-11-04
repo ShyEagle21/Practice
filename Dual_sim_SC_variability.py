@@ -21,7 +21,7 @@ class G:
     INDUCT_STAGE_VARIANCE = Process_Variance * INDUCT_STAGE_RATE 
     INDUCTION_RATE = 60/800  # minutes per package
     INDUCTION_VARIANCE = Process_Variance* INDUCTION_RATE 
-    SPLITTER_RATE = 60/1049  # minutes per package
+    SPLITTER_RATE = 1/60 #60/1049   #minutes per package
     SPLITTER_VARIANCE = Process_Variance* SPLITTER_RATE 
     TLMD_BUFFER_SORT_RATE = 60/445  # minutes per package
     TLMD_BUFFER_SORT_VARIANCE = Process_Variance * TLMD_BUFFER_SORT_RATE 
@@ -1476,8 +1476,7 @@ def Simulation_Machine(feature_values,
     #print("End Process")
     #print(len(G.TLMD_STAGED_PACKAGES))
 
-    #print("Variability")
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages
