@@ -7,7 +7,7 @@
 
 import math
 import numpy as np
-import sim_generator_LH_C_SEP as sg_c
+import sim_generator_LH_C_SEP_tuned as sg_c
 import matplotlib.pyplot as plt
 import pandas as pd
 import simpy
@@ -18,6 +18,8 @@ class G:
     Process_Variance = .1
     UNLOADING_RATE = 60/15  # minutes per pallet
     UNLOADING_VARIANCE = Process_Variance * UNLOADING_RATE 
+    FLUID_UNLOAD_RATE = 60/840  # minutes per package
+    FLUID_UNLOAD_VARIANCE = Process_Variance * FLUID_UNLOAD_RATE
     INDUCT_STAGE_RATE = 60/22  # minutes per pallet
     INDUCT_STAGE_VARIANCE = Process_Variance * INDUCT_STAGE_RATE 
     INDUCTION_RATE = 60/800  # minutes per package
@@ -229,6 +231,8 @@ def manage_resources(env, sortation_center, current_resource,
         sortation_center.current_resource['tm_TLMD_picker'] = simpy.Resource(env, capacity=night_tm_TLMD_picker)
         sortation_center.current_resource['tm_TLMD_sort'] = simpy.Resource(env, capacity=night_tm_TLMD_sort)
         sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=night_tm_TLMD_stage)
+        sortation_center.current_resource['tm_TFC_unload'] = simpy.Resource(env, capacity=night_tm_pit_unload +night_tm_pit_induct)
+        sortation_center.current_resource['tm_TFC_sort'] = simpy.Resource(env, capacity=night_tm_nonpit_split + night_tm_nonpit_NC + night_tm_nonpit_buffer)
 
         #print(f"Using nightshift resources at time {env.now}")
         yield env.timeout(600)
@@ -249,6 +253,8 @@ def manage_resources(env, sortation_center, current_resource,
         sortation_center.current_resource['tm_TLMD_picker'] = simpy.Resource(env, capacity=day_tm_TLMD_picker)
         sortation_center.current_resource['tm_TLMD_sort'] = simpy.Resource(env, capacity=day_tm_TLMD_sort)
         sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=day_tm_TLMD_stage)
+        sortation_center.current_resource['tm_TFC_unload'] = simpy.Resource(env, capacity=day_tm_pit_unload +day_tm_pit_induct)
+        sortation_center.current_resource['tm_TFC_sort'] = simpy.Resource(env, capacity=day_tm_nonpit_split + day_tm_nonpit_NC + day_tm_nonpit_buffer)
         yield env.timeout(600)
         
 # def make_resources_unavailable(env, sortation_center, start, end):
@@ -264,7 +270,12 @@ def linehaul_C_arrival(env, sortation_center):
     #print(f'Linehaul C arrival at {env.now}')
     sortation_center.LHC_flag = True
     sortation_center.LHC_arrive_flag = True
-    
+
+def TFC_arrival(env, sortation_center):
+    yield env.timeout(G.LINEHAUL_TFC_TIME)
+    #print(f'Linehaul C arrival at {env.now}')
+    sortation_center.TFC_flag = True
+      
 
 def plot_metrics(metrics):
     plt.figure(figsize=(12, 8))
@@ -322,6 +333,7 @@ class Sortation_Center:
         self.TLMD_stage = False
         self.LHC_flag = False
         self.LHC_arrive_flag = False
+        self.TFC_flag = False
 
         #flags for national carrier progress
         self.USPS_AB_flag = False
@@ -341,6 +353,7 @@ class Sortation_Center:
         self.queues = {
             'queue_inbound_truck': simpy.Store(self.env),
             'queue_inbound_staging': simpy.Store(self.env, capacity=200),
+            'queue_truck_TFC_packages': simpy.Store(self.env),
             'queue_inbound_staging_TLMD_C': simpy.Store(self.env, capacity=200),
             'queue_induct_staging_pallets': simpy.Store(self.env, capacity = 8),
             'queue_induct_staging_packages': simpy.Store(self.env),
@@ -396,8 +409,6 @@ class Sortation_Center:
             #self.metrics['resource_utilization'].append(len(self.night_tm_pit_unload.queue))
             yield self.env.timeout(1)
 
-    
-
     def schedule_arrivals(self):
         for i, row in self.pallets_df.iterrows():
             pallet = Pallet(
@@ -420,6 +431,11 @@ class Sortation_Center:
 ####################################
 
     def unload_truck(self, pallet):
+        while self.TFC_flag and not self.TLMD_AB_flag:
+            yield self.env.timeout(1)
+        if self.TFC_flag and self.TLMD_AB_flag:
+            self.env.process(self.fluid_unload_to_packages(pallet))
+
         with self.current_resource['tm_pit_unload'].request() as req:
             yield req
             yield self.queues['queue_inbound_truck'].get()
@@ -442,6 +458,44 @@ class Sortation_Center:
                 yield self.queues['queue_inbound_staging'].put(pallet)
                 self.env.process(self.move_to_induct_staging(pallet))
 ####
+
+    def fluid_unload_to_packages(self, pallet):
+        for package in pallet.packages:
+            package.current_queue = 'queue_truck_TFC_packages'
+            yield self.queues['queue_truck_TFC_packages'].put(package)
+            self.env.process(self.fluid_unload(package, pallet))
+
+    def fluid_unload(self, package, pallet):
+        while self.TFC_flag and not self.TLMD_AB_flag:
+            yield self.env.timeout(1)
+        with self.current_resource['tm_TFC_unload'].request() as req:
+            yield req
+            yield self.queues['queue_truck_TFC_packages'].get()
+            if self.var_status == True:
+                process_time = np.random.normal(G.FLUID_UNLOAD_RATE, G.FLUID_UNLOAD_VARIANCE)
+            elif self.var_status == False:
+                process_time = G.FLUID_UNLOAD_RATE
+            yield self.env.timeout(max(0.01,process_time))
+            package.current_queue = 'queue'
+            yield self.queues['queue_tlmd_buffer_sort'].put(package)
+            pallet.current_packages -= 1
+            self.env.process(self.TLMD_buffer_TFC_sort(package))
+
+    def TLMD_buffer_TFC_sort(self, package):
+        while self.LHC_arrive_flag and not self.partition_3_flag:
+            yield self.env.timeout(1)
+        with self.current_resource['tm_TFC_sort'].request(priority=1) as req:
+            yield req
+            yield self.queues['queue_tlmd_buffer_sort'].get()
+            if self.var_status == True:
+                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_VARIANCE)
+            elif self.var_status == False:
+                process_time = G.TLMD_BUFFER_SORT_RATE
+            yield self.env.timeout(max(0.05,process_time))
+            #print(f'Package {package.tracking_number} sorted to TLMD Buffer at {self.env.now}')
+            yield self.queues['queue_tlmd_pallet'].put(package)
+            self.env.process(self.check_all_packages_staged())
+
     def move_to_TLMD_staging(self, pallet):
         while self.LHC_arrive_flag and not self.partition_2_flag:
             yield self.env.timeout(1)  
@@ -1361,6 +1415,7 @@ def setup_simulation(day_pallets,
     env.process(sortation_center.track_metrics())
     sortation_center.schedule_arrivals()
     env.process(linehaul_C_arrival(env,sortation_center))
+    env.process(TFC_arrival(env,sortation_center))
 
     # for start, end in unavailable_periods:
     #     env.process(make_resources_unavailable(env, sortation_center, start, end))
@@ -1395,7 +1450,7 @@ def setup_simulation(day_pallets,
 
 #####################################################################################
 
-def Simulation_Machine(feature_values,
+def Simulation_Machine(predict,
                        night_total_tm,
                        day_total_tm,
                        night_tm_pit_unload, 
@@ -1432,7 +1487,7 @@ def Simulation_Machine(feature_values,
                         var_40
                         ):
     
-    df_pallets, df_package_distribution, TFC_arrival_minutes = sg_c.simulation_generator(False, feature_values)
+    df_pallets, df_package_distribution, TFC_arrival_minutes = sg_c.simulation_generator(predict)
 
     pallet_info = df_pallets.groupby('Pallet').agg(
         num_packages=('package_tracking_number', 'count'),
@@ -1504,7 +1559,7 @@ def Simulation_Machine(feature_values,
     #print("End Process")
     #print(len(G.TLMD_STAGED_PACKAGES))
 
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages
