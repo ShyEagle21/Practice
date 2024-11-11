@@ -58,8 +58,8 @@ class G:
 
 
     OUTBOUND_NC_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
-    PARTITION_PALLET_MAX_PACKAGES = 65  # Max packages per pallet
-    TLMD_PARTITION_PALLET_MAX_PACKAGES = 65  # Max packages per pallet
+    PARTITION_PALLET_MAX_PACKAGES = 55  # Max packages per pallet
+    TLMD_PARTITION_PALLET_MAX_PACKAGES = 55  # Max packages per pallet
     NC_PALLET_MAX_PACKAGES = 50  # Max packages per pallet
     TLMD_CART_MAX_PACKAGES = 20  # Max packages per cart
     TOTAL_PACKAGES = None  # Total packages to be processed
