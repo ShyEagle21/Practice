@@ -7,163 +7,103 @@ import pandas as pd
 from datetime import datetime
 import numpy as np
 import math
+import random
 
+def generate_demand(predicted_volume, fluid_ratio, prediction_date):
 
-def generate_demand(csv_file, sortation_center_id, predicted_volume, prediction_date ):
+    linehaul_schedule = pd.read_csv('linehaul_schedule_demo_fluid.csv')
 
-    #predicted_volume = float(predicted_volume)
-    data = pd.read_csv(csv_file)
-    linehaul_schedule = pd.read_csv('linehaul_schedule.csv')
-    mean_dict_actual_pack = {}
-    std_dict_actual_pack = {}
-    mean_dict_actual_pal = {}
-    std_dict_actual_pal = {}
-    mean_dict_per= {}
-    std_dict_per = {}
-    mean_dict_arrive = {}
-    std_dict_arrive = {}
+    # Number of fluid and pallet trucks
+    num_fluid_trucks = linehaul_schedule['Fluid'].value_counts().get(1, 0)
+    num_pallet_trucks = linehaul_schedule['Fluid'].value_counts().get(0, 0)
+    total_trucks = num_fluid_trucks + num_pallet_trucks
+    # Minimum volume for fluid trucks to ensure they carry more than 50% of the total volume
+    mean = predicted_volume * fluid_ratio / num_fluid_trucks
+    std_dev = .2 * mean
 
-    filtered_df = data[data['sortation_center_id'] == sortation_center_id]
+    
+    # Distribute the volume for fluid trucks
+    fluid_volumes = [random.gauss(mean / num_fluid_trucks, std_dev) for _ in range(num_fluid_trucks)]
+    fluid_volumes = [math.ceil(volume) for volume in fluid_volumes]
+    fluid_total = sum(fluid_volumes)
 
-    for truck in filtered_df['Truck Number'].unique():
-        truck_filtered_df = data[data['Truck Number'] == truck]
-        #calulate the mean of actual packages
-        mean_pack = truck_filtered_df['actual_packages'].mean()
-        mean_pal = truck_filtered_df['actual_pallets'].mean()
-        mean_per = truck_filtered_df['percentage contribution'].mean()
-        #caluclate the standard deviation of actual packages
-        std_pack = truck_filtered_df['actual_packages'].std()
-        std_pal = truck_filtered_df['actual_pallets'].std()
-        std_per = truck_filtered_df['percentage contribution'].std()
-        mean_dict_actual_pack[truck] = mean_pack
-        std_dict_actual_pack[truck] = std_pack
-        mean_dict_actual_pal[truck] = mean_pal
-        std_dict_actual_pal[truck] = std_pal
-        mean_dict_per[truck] = mean_per
-        std_dict_per[truck] = std_per
+    if fluid_total < predicted_volume * fluid_ratio:
+        needed_vol = predicted_volume*fluid_ratio-fluid_total
+        needed_vol_per_truck = round(needed_vol/num_fluid_trucks)
+        for i in range(num_fluid_trucks):
+            fluid_volumes[i] += needed_vol_per_truck
+        fluid_total = sum(fluid_volumes)
+        if fluid_total < predicted_volume * fluid_ratio:
+            fluid_volumes[0] += predicted_volume * fluid_ratio - fluid_total
 
+        
+    # Adjust the fluid volumes to ensure they sum up to more than 50% of the total volume
+    
+    # Remaining volume for pallet trucks
+    remaining_volume = predicted_volume - fluid_total
+    mean = remaining_volume / num_pallet_trucks
+    std_dev = 0.2 * mean
 
-    #make a table of the mean and standard deviation of actual packages
-    mean_dict_actual_pack = pd.DataFrame(mean_dict_actual_pack.items(), columns=['Truck Number', 'Mean Packages'])
-    std_dict_actual_pack = pd.DataFrame(std_dict_actual_pack.items(), columns=['Truck Number', 'Standard Deviation Packages'])
-    mean_dict_per = pd.DataFrame(mean_dict_per.items(), columns=['Truck Number', 'Mean Percentage'])
-    std_dict_per = pd.DataFrame(std_dict_per.items(), columns=['Truck Number', 'Standard Deviation Percentage'])
-    mean_dict_actual_pal = pd.DataFrame(mean_dict_actual_pal.items(), columns=['Truck Number', 'Mean Pallets'])
-    std_dict_actual_pal = pd.DataFrame(std_dict_actual_pal.items(), columns=['Truck Number', 'Standard Deviation Pallets'])
-    mean_std_actual = pd.merge(mean_dict_actual_pack, std_dict_actual_pack, on='Truck Number')
-    mean_std_per = pd.merge(mean_dict_per, std_dict_per, on='Truck Number')
-    mean_std_actual_pal = pd.merge(mean_dict_actual_pal, std_dict_actual_pal, on='Truck Number')
-    mean_std_stuff = pd.merge(mean_std_actual, mean_std_actual_pal, on='Truck Number')
-    mean_std_all = pd.merge(mean_std_stuff, mean_std_per, on='Truck Number')
+    # Distribute the remaining volume among pallet trucks
+    pallet_volumes = [random.gauss(mean, std_dev) for _ in range(num_pallet_trucks)]
+    pallet_volumes = [math.ceil(volume) for volume in pallet_volumes]
 
+    pallet_total = sum(pallet_volumes)
+
+    # Adjust the volumes to match the remaining volume
+    while pallet_total != remaining_volume:
+        difference = remaining_volume - pallet_total
+        adjustment_per_truck = difference // num_pallet_trucks
+        remainder = difference % num_pallet_trucks
+
+        for i in range(num_pallet_trucks):
+            pallet_volumes[i] += adjustment_per_truck
+            if i < remainder:
+                pallet_volumes[i] += 1
+
+        pallet_total = sum(pallet_volumes)
+
+        # Adjust the pallet volumes to ensure they sum up to the remaining volume
+
+       # Create truck numbers
+    fluid_truck_numbers = linehaul_schedule[linehaul_schedule['Fluid'] == 1]['Truck Number'].tolist()
+    pallet_truck_numbers = linehaul_schedule[linehaul_schedule['Fluid'] == 0]['Truck Number'].tolist()
+
+    # Combine truck numbers with volumes
+    fluid_data = {'Truck Number': fluid_truck_numbers, 'Volume': fluid_volumes}
+    pallet_data = {'Truck Number': pallet_truck_numbers, 'Volume': pallet_volumes}
+
+    # Create DataFrames
+    fluid_df = pd.DataFrame(fluid_data)
+    pallet_df = pd.DataFrame(pallet_data)
+
+    # Combine both DataFrames
+    combined_df = pd.concat([fluid_df, pallet_df], ignore_index=True)
+    df_package_distribution = combined_df.sort_values(by='Truck Number').reset_index(drop=True)
 
     # Define the start time
     start_time = '16:30'
 
-
-    # Convert 'planned_arrival_datetime' and 'actual_arrival_datetime' to datetime
-    #filtered_df['planned_arrival_datetime'] = pd.to_datetime(filtered_df['planned_arrival_datetime'])
-    filtered_df.loc[:, 'planned_arrival_datetime'] = pd.to_datetime(filtered_df['planned_arrival_datetime'])
-    #filtered_df['actual_arrival_datetime'] = pd.to_datetime(filtered_df['actual_arrival_datetime'])
-    filtered_df.loc[:, 'actual_arrival_datetime'] = pd.to_datetime(filtered_df['actual_arrival_datetime'])
-    planned_truck = {}
-
-    #pull out the planned arrival time for each truck number
-
-
-
-    # Filter out rows where the actual arrival is more than 3 hours early or late
-    time_diff = (filtered_df['actual_arrival_datetime'] - filtered_df['planned_arrival_datetime']).abs()
-    filtered_df = filtered_df[time_diff <= pd.Timedelta(hours=3)]
-
-    # Iterate over each unique truck number
-    for truck in filtered_df['Truck Number'].unique():
-        truck_df = filtered_df[filtered_df['Truck Number'] == truck].reset_index(drop=True)
-        
-        # Convert 'actual_arrival_datetime' to datetime
-        truck_df['arrival_time'] = pd.to_datetime(truck_df['actual_arrival_datetime'])
-        planned_truck[truck] = truck_df['planned_arrival_datetime']
-        # Iterate over each row in the truck DataFrame
-        for idx, row in truck_df.iterrows():
-            arrival_time = row['arrival_time']
-            if arrival_time.time() < datetime.strptime('15:00:00', '%H:%M:%S').time():
-                arrival_time += pd.Timedelta(days=1)
-            
-            shift_time = pd.to_datetime(f"{row['inbound_date']} {start_time}")
-            truck_df.at[idx, 'shift_time'] = shift_time
-            truck_df.at[idx, 'arrival_time'] = arrival_time
-
-        truck_df['arrival_mins'] = (truck_df['arrival_time'] - truck_df['shift_time']).dt.total_seconds() // 60
-
-        # Calculate mean and standard deviation
-        mean = truck_df['arrival_mins'].mean()
-        std = truck_df['arrival_mins'].std()
-        
-        mean_dict_arrive[truck] = mean
-        std_dict_arrive[truck] = std
-
-        df_mean_dict_arrive = pd.DataFrame(mean_dict_arrive.items(), columns=['Truck Number', 'Mean'])
-        df_std_dict_arrive = pd.DataFrame(std_dict_arrive.items(), columns=['Truck Number', 'STD'])
-        mean_std_arrival = pd.merge(df_mean_dict_arrive, df_std_dict_arrive, on='Truck Number')
-
-
-
+    mean_std_arrival = pd.read_csv('mean_std_arrival.csv')
             
     #########################################################################################################
 
-    df_truck_assumptions = mean_std_all
+    
     df_truck_arrival = mean_std_arrival
-
-
-
-    df_truck_assumptions['vol_actualization'] = np.random.normal(df_truck_assumptions['Mean Percentage'], df_truck_assumptions['Standard Deviation Percentage'])
-    df_truck_assumptions.fillna(0)
-    linehaul = df_truck_assumptions['vol_actualization'].sum()
-    TFC = 1-linehaul
-    df_truck_assumptions.loc[15,'vol_actualization'] = TFC
-
-    df_package_distribution = pd.DataFrame(df_truck_assumptions[['Truck Number', 'vol_actualization']])
-
-    df_truck_assumptions['Average Packages Per Pallet'] = df_truck_assumptions['Mean Packages'] / df_truck_assumptions['Mean Pallets']  
-
-    df_pallet_assumptions = pd.DataFrame(df_truck_assumptions['Average Packages Per Pallet'])
-
-    df_pallet_assumptions = df_pallet_assumptions.iloc[:-1]
 
     time = '16:30'
 
-    df_package_distribution['predicted_truck_volume'] = df_package_distribution['vol_actualization'] * predicted_volume
-    df_package_distribution = df_package_distribution.drop(15)
-    df_package_distribution['predicted_truck_volume'] = df_package_distribution['predicted_truck_volume'].astype(int)
-    df_package_distribution['predicted_truck_volume'] = df_package_distribution['predicted_truck_volume'].apply(lambda x: max(x, 0))
-    df_package_distribution['Truck Number'] = df_package_distribution['Truck Number'].astype(int)
-
-    total_packages = df_package_distribution['predicted_truck_volume'].sum()
-    TFC_vol = predicted_volume - total_packages
-
-    if predicted_volume != total_packages+TFC_vol:
-        print(f'Error: Total packages ({total_packages}) do not match predicted volume({predicted_volume})')
-
-    
-
-    df_truck_assumptions['Scheduled Arrival Time'] = linehaul_schedule['Scheduled Arrival Time']    
-    
-    TFC_arrival = df_truck_assumptions.loc[15, 'Scheduled Arrival Time']
-
-    
-
     start_time = pd.to_datetime(f'{prediction_date} {time}')
-
-    TFC_arrival_dt = pd.to_datetime(prediction_date +" " + TFC_arrival)
-    TFC_arrival_minutes = (TFC_arrival_dt - start_time).seconds // 60
         
-    if TFC_arrival_minutes <0:
-        TFC_arrival_minutes = 0
 
     df_package_distribution['arrival_actualization'] = np.random.normal(df_truck_arrival['Mean'], df_truck_arrival['STD'])
 
-    for i in range(15):
-        df_package_distribution.loc[i, 'pallets'] = math.ceil(df_package_distribution.loc[i, 'predicted_truck_volume'] / df_pallet_assumptions.loc[i,'Average Packages Per Pallet'])
+    for i in range(total_trucks):
+        df_package_distribution.loc[i, 'pallets'] = math.ceil(df_package_distribution.loc[i, 'Volume'] / 60)
     df_package_distribution['pallets'] = df_package_distribution['pallets'].astype(int)
 
-    return df_package_distribution, TFC_vol, TFC_arrival_minutes
+    for truck in fluid_truck_numbers:
+        df_package_distribution.loc[truck-1, 'pallets'] = 1
+
+    return df_package_distribution
+    

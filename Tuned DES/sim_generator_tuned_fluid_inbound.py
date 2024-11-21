@@ -3,7 +3,7 @@
 ####
 ####
 
-import demand_generator as dg
+import demand_generator_fluid_inbound as dg
 import numpy as np
 import pandas as pd
 import random
@@ -14,13 +14,13 @@ def simulation_generator(predict):
     predicted_volume = predict
     #print(f'Predicted Total Volume: {predicted_volume}')
 
-    df_package_distribution, TFC_vol, TFC_arrival_minutes = dg.generate_demand('linehaul_all_predict - Copy.csv', 3858, predicted_volume, '2024-09-01')
+    df_package_distribution = dg.generate_demand(predicted_volume, 0.6, '2024-09-01')
 
     csv_file = 'carrier_breakdown.csv'
     distributions = pd.read_csv(csv_file)
 
     total_packages = predicted_volume
-    df_pallet_formation = pd.DataFrame(df_package_distribution[['Truck Number','predicted_truck_volume', 'pallets']])
+    df_pallet_formation = pd.DataFrame(df_package_distribution[['Truck Number','Volume', 'pallets']])
 
     # Determine the number of packages going to each organization based on the distribution
     carrier_packages = {}
@@ -40,7 +40,6 @@ def simulation_generator(predict):
         while bonus_carrier == 'FDE':
             bonus_carrier = random.choice(list(carrier_packages.keys()))
         carrier_packages[random.choice(list(carrier_packages.keys()))] += difference
-        carrier_packages['TLMD'] = carrier_packages['TLMD'] - TFC_vol
 
     df_carrier_breakdown = pd.DataFrame(list(carrier_packages.items()), columns=['Organization', 'Packages'])
 
@@ -57,21 +56,19 @@ def simulation_generator(predict):
         
         # Shuffle the list of all packages
         np.random.shuffle(all_packages)
-        
         start_index = 0
         for i in range(len(trucks_df)):
             truck_number = trucks_df.loc[i, 'Truck Number']
             num_pallets = trucks_df.loc[i, 'pallets']
-            predicted_truck_volume = trucks_df.loc[i, 'predicted_truck_volume']
-            
+            predicted_truck_volume = int(trucks_df.loc[i, 'Volume'])
+
             # Skip trucks with zero pallets
             if num_pallets <= 0:
                 continue
             
             # Get the packages for the current truck
-            truck_packages = all_packages[start_index:start_index + predicted_truck_volume]
+            truck_packages = all_packages[start_index:(start_index + predicted_truck_volume)]
             start_index += predicted_truck_volume
-            
             # Create a list of pallets for the current truck
             truck_pallets = [[] for _ in range(num_pallets)]
             
@@ -119,11 +116,11 @@ def simulation_generator(predict):
         arrival_time = float(arrival_times_df[arrival_times_df['Truck Number'] == truck_number]['arrival_actualization'].values)
         arrival_time = max(arrival_time, 0.0)
         # Determine linehaul value based on truck number
-        if 1 <= truck_number <= 6:
+        if arrival_time < 190:
             linehaul = 'A'
-        elif 7 <= truck_number <= 11:
+        elif arrival_time < 800:
             linehaul = 'B'
-        elif 12 <= truck_number <= 15:
+        elif arrival_time < 1800:
             linehaul = 'C'
         else:
             linehaul = 'Unknown'  # Handle unexpected truck numbers
@@ -151,23 +148,7 @@ def simulation_generator(predict):
         'Linehaul': linehaul_list
     })
 
-    # Generate new packages with specified attributes
-    new_packages = {
-        'pkg_received_utc_ts': [TFC_arrival_minutes] * TFC_vol,
-        'package_tracking_number': [f"PKG{package_counter + i:06d}" for i in range(TFC_vol)],
-        'scac': ['TLMD'] * TFC_vol,
-        'Pallet': [pallet_counter] * TFC_vol,
-        'Linehaul':  'TFC'
-    }
-
-    # Create DataFrame for new packages
-    df_new_packages = pd.DataFrame(new_packages)
-
-    # Append new packages to the existing DataFrame
-    df = pd.concat([df, df_new_packages], ignore_index=True)
-
-
-    return df, df_package_distribution, TFC_arrival_minutes
+    return df, df_package_distribution
     
 
 

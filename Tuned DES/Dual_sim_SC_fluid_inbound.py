@@ -119,11 +119,12 @@ class G:
     TLMD_LINEHAUL_B_PACKAGES = None
     TLMD_LINEHAUL_C_PACKAGES = None
 
-    TLMD_LINEHAUL_TFC_PACKAGES=None
+
 
     LINEHAUL_C_TIME = None
-    LINEHAUL_TFC_TIME = None
-
+    LINEHAUL_B_TIME = None
+    LINEHAUL_A_TIME = None
+    
     TOTAL_PACKAGES_UPSN = None
     TOTAL_PACKAGES_USPS = None
     TOTAL_PACKAGES_FDEG = None
@@ -202,8 +203,7 @@ class National_Carrier_Pallet:
         #print(f"Package {package.tracking_number} added to pallet {self.pallet_id} at {self.env.now}")
         ##print(f'Pallet currently contains {self.current_packages} packages')
 
-def manage_resources(env, sortation_center, current_resource, 
-                     night_tm_pit_unload, 
+def manage_resources(env, sortation_center, current_resource,  
                         night_tm_pit_induct, 
                         night_tm_nonpit_split, 
                         night_tm_nonpit_NC, 
@@ -213,7 +213,6 @@ def manage_resources(env, sortation_center, current_resource,
                         night_tm_TLMD_picker,
                         night_tm_TLMD_sort,
                         night_tm_TLMD_stage,
-                        day_tm_pit_unload,
                         day_tm_pit_induct,
                         day_tm_nonpit_split,
                         day_tm_nonpit_NC,
@@ -224,9 +223,8 @@ def manage_resources(env, sortation_center, current_resource,
                         day_tm_TLMD_sort,
                         day_tm_TLMD_stage):
     
-        #yield env.timeout(30)
+        yield env.timeout(30)
         # Start with 1 resource for the first 10 minutes
-        sortation_center.current_resource['tm_pit_unload'] = simpy.Resource(env, capacity=night_tm_pit_unload)
         sortation_center.current_resource['tm_pit_induct'] = simpy.PriorityResource(env, capacity=night_tm_pit_induct)
         sortation_center.current_resource['tm_nonpit_split'] = simpy.Resource(env, capacity=night_tm_nonpit_split)
         sortation_center.current_resource['tm_nonpit_NC'] = simpy.PriorityResource(env, capacity=night_tm_nonpit_NC)
@@ -236,8 +234,6 @@ def manage_resources(env, sortation_center, current_resource,
         sortation_center.current_resource['tm_TLMD_picker'] = simpy.Resource(env, capacity=night_tm_TLMD_picker)
         sortation_center.current_resource['tm_TLMD_sort'] = simpy.Resource(env, capacity=night_tm_TLMD_sort)
         sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=night_tm_TLMD_stage)
-        sortation_center.current_resource['tm_TFC_unload'] = simpy.Resource(env, capacity=night_tm_pit_unload +night_tm_pit_induct)
-        sortation_center.current_resource['tm_TFC_sort'] = simpy.Resource(env, capacity=night_tm_nonpit_split + night_tm_nonpit_NC + night_tm_nonpit_buffer)
 
         #print(f"Using nightshift resources at time {env.now}")
         yield env.timeout(600)
@@ -248,7 +244,6 @@ def manage_resources(env, sortation_center, current_resource,
         #print(f'Using dayshift resources at time {env.now}')
 
         # Switch to 5 resources for the next 30 minutes
-        sortation_center.current_resource['tm_pit_unload'] = simpy.Resource(env, capacity=day_tm_pit_unload)
         sortation_center.current_resource['tm_pit_induct'] = simpy.PriorityResource(env, capacity=day_tm_pit_induct)
         sortation_center.current_resource['tm_nonpit_split'] = simpy.Resource(env, capacity=day_tm_nonpit_split)
         sortation_center.current_resource['tm_nonpit_NC'] = simpy.PriorityResource(env, capacity=day_tm_nonpit_NC)
@@ -258,8 +253,6 @@ def manage_resources(env, sortation_center, current_resource,
         sortation_center.current_resource['tm_TLMD_picker'] = simpy.Resource(env, capacity=day_tm_TLMD_picker)
         sortation_center.current_resource['tm_TLMD_sort'] = simpy.Resource(env, capacity=day_tm_TLMD_sort)
         sortation_center.current_resource['tm_TLMD_stage'] = simpy.Resource(env, capacity=day_tm_TLMD_stage)
-        sortation_center.current_resource['tm_TFC_unload'] = simpy.Resource(env, capacity=day_tm_pit_unload +day_tm_pit_induct)
-        sortation_center.current_resource['tm_TFC_sort'] = simpy.Resource(env, capacity=day_tm_nonpit_split + day_tm_nonpit_NC + day_tm_nonpit_buffer)
         yield env.timeout(600)
         
 # def make_resources_unavailable(env, sortation_center, start, end):
@@ -274,13 +267,19 @@ def linehaul_C_arrival(env, sortation_center):
     yield env.timeout(G.LINEHAUL_C_TIME)
     #print(f'Linehaul C arrival at {env.now}')
     sortation_center.LHC_flag = True
-    sortation_center.LHC_arrive_flag = True
+    sortation_center.LHC_done_flag = False
 
-def TFC_arrival(env, sortation_center):
-    yield env.timeout(G.LINEHAUL_TFC_TIME)
+def linehaul_B_arrival(env, sortation_center):
+    yield env.timeout(G.LINEHAUL_B_TIME)
     #print(f'Linehaul C arrival at {env.now}')
-    sortation_center.TFC_flag = True
-      
+    sortation_center.LHB_flag = True
+    sortation_center.LHB_done_flag = False
+
+def linehaul_A_arrival(env, sortation_center):
+    yield env.timeout(G.LINEHAUL_A_TIME)
+    #print(f'Linehaul C arrival at {env.now}')
+    sortation_center.LHA_flag = True
+    sortation_center.LHA_done_flag = False
 
 def plot_metrics(metrics):
     plt.figure(figsize=(12, 8))
@@ -334,11 +333,18 @@ class Sortation_Center_Original:
 
         #flags to control the resources dedicated to processes
         self.inbound_flag = False
+        self.LHA_flag = False
+        self.LHA_done_flag = False
+        self.LHB_flag = False
+        self.LHB_done_flag = False
+        self.LHC_flag = False
+        self.LHC_done_flag = False
         self.TLMD_flag = False
         self.TLMD_sort = False
         self.TLMD_stage = False
-        self.LHC_flag = False
-        self.TFC_flag = False
+        self.counter = 0
+        self.counter_B = 0
+        
 
         #flags for national carrier progress
         self.USPS_AB_flag = False
@@ -360,7 +366,7 @@ class Sortation_Center_Original:
         self.queues = {
             'queue_inbound_truck': simpy.Store(self.env),
             'queue_inbound_staging': simpy.Store(self.env, capacity=200),
-            'queue_truck_TFC_packages': simpy.Store(self.env),
+            'queue_truck_fluid_packages': simpy.Store(self.env),
             'queue_induct_staging_pallets': simpy.Store(self.env, capacity = 8),
             'queue_induct_staging_packages': simpy.Store(self.env),
             'queue_splitter': simpy.Store(self.env, capacity=1),
@@ -379,10 +385,7 @@ class Sortation_Center_Original:
             "queue_FDE_fluid": simpy.Store(self.env, capacity=10),
             "queue_USPS_fluid": simpy.Store(self.env, capacity=10),
             "queue_UPSN_fluid": simpy.Store(self.env, capacity=10),
-            #'queue_FDEG_outbound_packages': simpy.Store(self.env),
-            #'queue_FDE_outbound_packages': simpy.Store(self.env),
-            #'queue_USPS_outbound_packages': simpy.Store(self.env),
-            #'queue_UPSN_outbound_packages': simpy.Store(self.env),
+
             'queue_tlmd_1_staged_pallet': simpy.Store(env),
             'queue_tlmd_2_staged_pallet': simpy.Store(env),
             'queue_tlmd_3_staged_pallet': simpy.Store(env),
@@ -391,13 +394,6 @@ class Sortation_Center_Original:
             'queue_tlmd_splitter' : simpy.Store(env, capacity = 1),
             'queue_tlmd_final_sort' : simpy.Store(env, capacity = 100),
             'queue_tlmd_cart' : simpy.Store(env),  
-            #'queue_tlmd_1_cart' : simpy.Store(env),
-            #'queue_tlmd_2_cart' : simpy.Store(env),
-            #'queue_tlmd_3_cart' : simpy.Store(env),  
-            #'queue_tlmd_cart_1_staging' : simpy.Store(env),
-            #'queue_tlmd_cart_2_staging' : simpy.Store(env),
-            #'queue_tlmd_cart_3_staging' : simpy.Store(env),
-            #'queue_tlmd_cart_handoff' : simpy.Store(env),
         }
 
         self.metrics = {
@@ -414,8 +410,6 @@ class Sortation_Center_Original:
                 self.metrics['queue_lengths'][key].append(len(queue.items))
             #self.metrics['resource_utilization'].append(len(self.night_tm_pit_unload.queue))
             yield self.env.timeout(1)
-
-    
 
     def schedule_arrivals(self):
         for i, row in self.pallets_df.iterrows():
@@ -439,14 +433,16 @@ class Sortation_Center_Original:
 ####################################
 
     def unload_truck(self, pallet):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
+        while self.LHB_flag and not self.LHA_done_flag:
+            print('TEST2')
             yield self.env.timeout(1)
 
-        if self.TFC_flag and self.TLMD_AB_pre_flag:
+        if self.LHB_flag and self.LHA_done_flag and not self.LHB_done_flag:
             self.env.process(self.fluid_unload_to_packages(pallet))
         
         else:
-            with self.current_resource['tm_pit_unload'].request() as req:
+            print('TEST')
+            with self.current_resource['tm_pit_induct'].request(priority=0) as req:
                 yield req
                 yield self.queues['queue_inbound_truck'].get()
                 if self.var_status == True:
@@ -457,21 +453,27 @@ class Sortation_Center_Original:
                 pallet.current_queue = 'queue_inbound_staging'
                 #print(f'Pallet {pallet.pallet_id} unloaded at {self.env.now}')
                 yield self.queues['queue_inbound_staging'].put(pallet)
+                self.counter += 1
+                if self.counter >= G.TOTAL_LINEHAUL_A_PACKAGES + G.TOTAL_LINEHAUL_C_PACKAGES:
+                    self.LHC_done_flag = True
+                elif self.counter >= G.TOTAL_LINEHAUL_A_PACKAGES: 
+                    self.LHA_done_flag = True
                 self.env.process(self.move_to_induct_staging(pallet))
-
         
     def fluid_unload_to_packages(self, pallet):
         for package in pallet.packages:
-            package.current_queue = 'queue_truck_TFC_packages'
-            yield self.queues['queue_truck_TFC_packages'].put(package)
+            package.current_queue = 'queue_truck_fluid_packages'
+            yield self.queues['queue_truck_fluid_packages'].put(package)
             self.env.process(self.fluid_unload(package, pallet))
 
+
+### Need to make this seperate NC and TLMD
     def fluid_unload(self, package, pallet):
         while self.TFC_flag and not self.TLMD_AB_pre_flag:
             yield self.env.timeout(1)
-        with self.current_resource['tm_TFC_unload'].request() as req:
+        with self.current_resource['tm_pit_induct'].request(priority=0) as req:
             yield req
-            yield self.queues['queue_truck_TFC_packages'].get()
+            yield self.queues['queue_truck_fluid_packages'].get()
             if self.var_status == True:
                 process_time = np.random.normal(G.FLUID_UNLOAD_RATE, G.FLUID_UNLOAD_RATE * self.var_mag)
             elif self.var_status == False:
@@ -480,22 +482,10 @@ class Sortation_Center_Original:
             package.current_queue = 'queue'
             yield self.queues['queue_tlmd_buffer_sort'].put(package)
             pallet.current_packages -= 1
-            self.env.process(self.TLMD_buffer_TFC_sort(package))
-
-    def TLMD_buffer_TFC_sort(self, package):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
-        with self.current_resource['tm_TFC_sort'].request() as req:
-            yield req
-            yield self.queues['queue_tlmd_buffer_sort'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_BUFFER_SORT_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f'Package {package.tracking_number} sorted to TLMD Buffer at {self.env.now}')
-            yield self.queues['queue_tlmd_pallet'].put(package)
-            self.env.process(self.check_all_packages_staged())
+            self.counter_B += 1
+            if self.counter >= G.TOTAL_LINEHAUL_B_PACKAGES:
+                self.LHB_done_flag = True
+            self.env.process(self.split_package(package))
 
     def move_to_induct_staging(self, pallet):
         while self.LHC_flag and not self.partition_2_flag:
@@ -522,7 +512,7 @@ class Sortation_Center_Original:
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
 
-        with self.current_resource['tm_pit_induct'].request(priority=0) as req:  
+        with self.current_resource['tm_pit_induct'].request(priority=2) as req:  
             yield req
             yield self.queues['queue_induct_staging_packages'].get()
             if self.var_status == True:
@@ -1258,984 +1248,10 @@ class Sortation_Center_Original:
 
 
 #######################################################################################
-class Sortation_Center_Change:
-    def __init__(self, 
-                env, 
-                pallets_df, 
-                USPS_Fluid_Status,
-                UPSN_Fluid_Status,
-                FDEG_Fluid_Status,
-                FDE_Fluid_Status,
-                current_resources,
-                var_status,
-                var_mag
-                ):
-        
-        self.env = env
-        self.pallets_df = pallets_df
-
-        self.current_resource = current_resources
-
-        #Determine whether National Carrier is performed as Fluid or Pallet
-        self.USPS_Fluid_Status = USPS_Fluid_Status
-        self.UPSN_Fluid_Status = UPSN_Fluid_Status
-        self.FDEG_Fluid_Status = FDEG_Fluid_Status
-        self.FDE_Fluid_Status = FDE_Fluid_Status
-
-        #Used for consideration of breaks
-        self.resources_available = True
-
-        #flags used to control whether day shift resources or night shift resources are used.
-        self.night_shift = False
-        self.day_shift = False
-
-        #flags to control the resources dedicated to processes
-        self.inbound_flag = False
-        self.TLMD_flag = False
-        self.TLMD_sort = False
-        self.TLMD_stage = False
-        self.LHC_flag = False
-        self.LHC_arrive_flag = False
-        self.TFC_flag = False
-
-        #flags for national carrier progress
-        self.USPS_AB_flag = False
-        self.UPSN_AB_flag = False
-        self.FDEG_AB_flag = False
-        self.FDE_ABflag = False
-        self.TLMD_AB_flag = False
-        self.TLMD_AB_pre_flag = False
-        self.inbound_C_flag = False
-
-        self.partition_1_flag = False
-        self.partition_2_flag = False
-        self.partition_3_flag = False
-        self.partition_3AB_flag = False
-
-        self.var_status = var_status
-        self.var_mag = var_mag
-
-        self.queues = {
-            'queue_inbound_truck': simpy.Store(self.env),
-            'queue_inbound_staging': simpy.Store(self.env, capacity=200),
-            'queue_truck_TFC_packages': simpy.Store(self.env),
-            'queue_inbound_staging_TLMD_C': simpy.Store(self.env, capacity=200),
-            'queue_induct_staging_pallets': simpy.Store(self.env, capacity = 8),
-            'queue_induct_staging_packages': simpy.Store(self.env),
-            'queue_splitter': simpy.Store(self.env, capacity=1),
-            'queue_tlmd_buffer_sort': simpy.Store(self.env, capacity=100),
-            'queue_national_carrier_sort': simpy.Store(self.env, capacity=100),
-            'queue_tlmd_pallet': simpy.Store(self.env),  
-            "queue_FDEG_pallet": simpy.Store(self.env),
-            "queue_FDE_pallet": simpy.Store(self.env),
-            "queue_USPS_pallet": simpy.Store(self.env),
-            "queue_UPSN_pallet": simpy.Store(self.env), 
-            'queue_FDEG_staged_pallet': simpy.Store(self.env),
-            'queue_FDE_staged_pallet': simpy.Store(self.env),
-            'queue_USPS_staged_pallet': simpy.Store(self.env),
-            'queue_UPSN_staged_pallet': simpy.Store(self.env),
-            "queue_FDEG_fluid": simpy.Store(self.env, capacity=10),
-            "queue_FDE_fluid": simpy.Store(self.env, capacity=10),
-            "queue_USPS_fluid": simpy.Store(self.env, capacity=10),
-            "queue_UPSN_fluid": simpy.Store(self.env, capacity=10),
-            #'queue_FDEG_outbound_packages': simpy.Store(self.env),
-            #'queue_FDE_outbound_packages': simpy.Store(self.env),
-            #'queue_USPS_outbound_packages': simpy.Store(self.env),
-            #'queue_UPSN_outbound_packages': simpy.Store(self.env),
-            'queue_tlmd_1_staged_pallet': simpy.Store(env),
-            'queue_tlmd_2_staged_pallet': simpy.Store(env),
-            'queue_tlmd_3_staged_pallet': simpy.Store(env),
-            'queue_tlmd_induct_staging_pallets' : simpy.Store(env, capacity=6),
-            'queue_tlmd_induct_staging_packages' : simpy.Store(env),
-            'queue_tlmd_splitter' : simpy.Store(env, capacity = 1),
-            'queue_tlmd_final_sort' : simpy.Store(env),
-            'queue_tlmd_cart' : simpy.Store(env),  
-            #'queue_tlmd_1_cart' : simpy.Store(env),
-            #'queue_tlmd_2_cart' : simpy.Store(env),
-            #'queue_tlmd_3_cart' : simpy.Store(env),  
-            #'queue_tlmd_cart_1_staging' : simpy.Store(env),
-            #'queue_tlmd_cart_2_staging' : simpy.Store(env),
-            #'queue_tlmd_cart_3_staging' : simpy.Store(env),
-            #'queue_tlmd_cart_handoff' : simpy.Store(env),
-        }
-
-        self.metrics = {
-            'processing_times': [],
-            'queue_lengths': {key: [] for key in self.queues.keys()},
-            'resource_utilization': [],
-        }
-
-        self.all_packages_staged_time = None
-
-    def track_metrics(self):
-        while True:
-            for key, queue in self.queues.items():
-                self.metrics['queue_lengths'][key].append(len(queue.items))
-            #self.metrics['resource_utilization'].append(len(self.night_tm_pit_unload.queue))
-            yield self.env.timeout(1)
-
-    def schedule_arrivals(self):
-        for i, row in self.pallets_df.iterrows():
-            pallet = Pallet(
-                self.env,
-                row['Pallet'],
-                row['packages'],
-                row['earliest_arrival']
-            )
-            self.env.process(self.truck_arrival(pallet))
-
-    def truck_arrival(self, pallet):
-        yield self.env.timeout(pallet.pkg_received_utc_ts) 
-        pallet.current_queue = 'queue_inbound_truck'
-        #print(f'Pallet {pallet.pallet_id} arrived at {self.env.now}')
-        yield self.queues['queue_inbound_truck'].put(pallet)
-        self.env.process(self.unload_truck(pallet))
-
-####################################
-####inbound induct proces start#####
-####################################
-
-    def unload_truck(self, pallet):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
-        if self.TFC_flag and self.TLMD_AB_pre_flag:
-            self.env.process(self.fluid_unload_to_packages(pallet))
-
-        else:
-            with self.current_resource['tm_pit_unload'].request() as req:
-                yield req
-                yield self.queues['queue_inbound_truck'].get()
-                if self.var_status == True:
-                    process_time = np.random.normal(G.UNLOADING_RATE, G.UNLOADING_RATE * self.var_mag)
-                elif self.var_status == False:
-                    process_time = G.UNLOADING_RATE
-                yield self.env.timeout(max(0,process_time))  # Unloading time
-                if self.LHC_arrive_flag:
-                    if pallet.packages[0].scac == "TLMD":
-                        pallet.current_queue = 'queue_inbound_staging_TLMD_C'
-                        yield self.queues['queue_inbound_staging_TLMD_C'].put(pallet)
-                        self.env.process(self.move_to_TLMD_staging(pallet))
-                    else:
-                        pallet.current_queue = 'queue_inbound_staging'
-                        yield self.queues['queue_inbound_staging'].put(pallet)
-                        self.env.process(self.move_to_induct_staging(pallet))
-                else:
-                    pallet.current_queue = 'queue_inbound_staging'
-                    yield self.queues['queue_inbound_staging'].put(pallet)
-                    self.env.process(self.move_to_induct_staging(pallet))
-####
-
-    def fluid_unload_to_packages(self, pallet):
-        for package in pallet.packages:
-            package.current_queue = 'queue_truck_TFC_packages'
-            yield self.queues['queue_truck_TFC_packages'].put(package)
-            self.env.process(self.fluid_unload(package, pallet))
-
-    def fluid_unload(self, package, pallet):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
-        with self.current_resource['tm_TFC_unload'].request() as req:
-            yield req
-            yield self.queues['queue_truck_TFC_packages'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.FLUID_UNLOAD_RATE, G.FLUID_UNLOAD_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.FLUID_UNLOAD_RATE
-            yield self.env.timeout(max(0,process_time))
-            package.current_queue = 'queue'
-            yield self.queues['queue_tlmd_buffer_sort'].put(package)
-            pallet.current_packages -= 1
-            self.env.process(self.TLMD_buffer_TFC_sort(package))
-
-    def TLMD_buffer_TFC_sort(self, package):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
-        with self.current_resource['tm_TFC_sort'].request() as req:
-            yield req
-            yield self.queues['queue_tlmd_buffer_sort'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_BUFFER_SORT_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f'Package {package.tracking_number} sorted to TLMD Buffer at {self.env.now}')
-            yield self.queues['queue_tlmd_pallet'].put(package)
-            self.env.process(self.check_all_packages_staged())
-
-    def move_to_TLMD_staging(self, pallet):
-        while self.LHC_arrive_flag and not self.partition_2_flag:
-            yield self.env.timeout(1)  
-    
-        with self.current_resource['tm_TLMD_induct_stage'].request(priority=1) as req:
-            yield req
-            yield self.queues['queue_inbound_staging_TLMD_C'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_C_PARTITION_STAGE_RATE, G.TLMD_C_PARTITION_STAGE_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_C_PARTITION_STAGE_RATE
-            yield self.env.timeout(max(0,process_time))
-            pallet.current_queue = 'queue_tlmd_3_staged_pallet'
-            yield self.queues['queue_tlmd_3_staged_pallet'].put(pallet)
-            self.env.process(self.feed_TLMD_induct_staging())
-
-
-    def move_to_induct_staging(self, pallet):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-
-        with self.current_resource['tm_pit_induct'].request(priority=1) as req: 
-            yield req
-            yield self.queues['queue_inbound_staging'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.INDUCT_STAGE_RATE, G.INDUCT_STAGE_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.INDUCT_STAGE_RATE
-            yield self.env.timeout(max(0,process_time))  # Unloading time
-            pallet.current_queue = 'queue_induct_staging_pallets'
-            yield self.queues['queue_induct_staging_pallets'].put(pallet)
-            #print(f'Pallet {pallet.pallet_id} staged for induction at {self.env.now}')
-            for package in pallet.packages:
-                package.current_queue = 'queue_induct_staging_packages'
-                yield self.queues['queue_induct_staging_packages'].put(package)
-                self.env.process(self.induct_package(package, pallet))
-
-    def induct_package(self, package, pallet): 
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        with self.current_resource['tm_pit_induct'].request(priority=0) as req:  
-            yield req
-            yield self.queues['queue_induct_staging_packages'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.INDUCTION_RATE, G.INDUCTION_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.INDUCTION_RATE
-            yield self.env.timeout(max(0,process_time))
-            package.current_queue = 'queue_splitter'
-            #print(f'Package {package.tracking_number}, {package.scac} inducted at {self.env.now}')
-            yield self.queues['queue_splitter'].put(package)
-            pallet.current_packages -= 1  # Decrement the counter
-            if pallet.current_packages == 0:
-                # Remove the pallet from queue_induct_staging_pallets
-                self.remove_pallet_from_queue(pallet)
-            self.env.process(self.split_package(package))  
-        
-    def remove_pallet_from_queue(self, pallet):
-        # Manually search for and remove the pallet from the queue
-        for i, p in enumerate(self.queues['queue_induct_staging_pallets'].items):
-            if p.pallet_id == pallet.pallet_id:
-                del self.queues['queue_induct_staging_pallets'].items[i]
-                #print(f'Pallet {pallet.pallet_id} removed from queue_induct_staging_pallets at {self.env.now}')
-                break
-
-    def split_package(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-
-        with self.current_resource['tm_nonpit_split'].request() as req:
-            yield req
-            yield self.queues['queue_splitter'].get()
-            if self.var_status == True:
-                process_rate = np.random.normal(G.SPLITTER_RATE, G.SPLITTER_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_rate = G.SPLITTER_RATE
-            yield self.env.timeout(max(0,process_rate))
-            if package.scac in ['UPSN', 'USPS', 'FDEG', 'FDE']:
-                package.current_queue = 'queue_national_carrier_sort'
-                #print(f'Package {package.tracking_number} split to National Sort at {self.env.now}')
-                yield self.queues['queue_national_carrier_sort'].put(package)
-                self.env.process(self.national_carrier_sort(package))
-            else:
-                package.current_queue = 'queue_tlmd_buffer_sort'
-                #print(f'Package {package.tracking_number} split to TLMD Buffer at {self.env.now}')
-                yield self.queues['queue_tlmd_buffer_sort'].put(package)
-                self.env.process(self.tlmd_buffer_sort(package))
-
-    def national_carrier_sort(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_national_carrier_sort"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_SORT_RATE, G.NATIONAL_CARRIER_SORT_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_SORT_RATE
-            yield self.env.timeout(max(0,process_time))
-            if package.scac in ['UPSN']:
-                if not self.UPSN_Fluid_Status:
-                    yield self.queues["queue_UPSN_pallet"].put(package)
-                    self.env.process(self.check_all_UPSN_sorted())
-                else:
-                    yield self.queues["queue_UPSN_fluid"].put(package)
-                    self.env.process(self.national_carrier_fluid_split_UPSN(package))
-            elif package.scac in ['USPS']:
-                if not self.USPS_Fluid_Status:
-                    yield self.queues["queue_USPS_pallet"].put(package)
-                    self.env.process(self.check_all_USPS_sorted())
-                else:
-                    yield self.queues["queue_USPS_fluid"].put(package)
-                    self.env.process(self.national_carrier_fluid_split_USPS(package))
-            elif package.scac in ['FDEG']:
-                if not self.FDEG_Fluid_Status:
-                    yield self.queues["queue_FDEG_pallet"].put(package)
-                    self.env.process(self.check_all_FDEG_sorted())
-                else:
-                    yield self.queues["queue_FDEG_fluid"].put(package)
-                    self.env.process(self.national_carrier_fluid_split_FDEG(package))
-            elif package.scac in ['FDE']:
-                if not self.FDE_Fluid_Status:
-                    yield self.queues["queue_FDE_pallet"].put(package)
-                    self.env.process(self.check_all_FDE_sorted())
-                else:
-                    yield self.queues["queue_FDE_fluid"].put(package)
-                    self.env.process(self.national_carrier_fluid_split_FDE(package))
-
-    
-        
-    def check_all_UPSN_sorted(self):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        if len(self.queues['queue_UPSN_pallet'].items) == G.UPSN_LINEHAUL_A_PACKAGES + G.UPSN_LINEHAUL_B_PACKAGES:
-            #print(f'All A&B UPSN packages sorted at {self.env.now}')
-            G.UPSN_SORT_TIME = self.env.now 
-            self.UPSN_AB_flag = True
-            self.env.process(self.NC_UPSN_pallet_build())
-        elif self.UPSN_AB_flag and len(self.queues['queue_UPSN_fluid'].items) == G.UPSN_LINEHAUL_C_PACKAGES:
-            #print(f'All C UPSN packages sorted at {self.env.now}')
-            self.env.process(self.NC_UPSN_pallet_build())
-        else:
-            yield self.env.timeout(1)
-            self.env.process(self.check_all_UPSN_sorted())
-
-    def check_all_USPS_sorted(self):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        if len(self.queues['queue_USPS_pallet'].items) == G.USPS_LINEHAUL_A_PACKAGES + G.USPS_LINEHAUL_B_PACKAGES:
-            #print(f'All A&B USPS packages sorted at {self.env.now}')
-            G.USPS_SORT_TIME = self.env.now
-            self.USPS_AB_flag = True
-            self.env.process(self.NC_USPS_pallet_build())
-        elif self.USPS_AB_flag and len(self.queues['queue_USPS_fluid'].items) == G.USPS_LINEHAUL_C_PACKAGES:
-            #print(f'All C USPS packages sorted at {self.env.now}')
-            self.env.process(self.NC_USPS_pallet_build())
-        else:
-            yield self.env.timeout(1)
-            self.env.process(self.check_all_USPS_sorted())
-
-    def check_all_FDEG_sorted(self):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        if  len(self.queues['queue_FDEG_pallet'].items) == G.FDEG_LINEHAUL_A_PACKAGES + G.FDEG_LINEHAUL_B_PACKAGES:
-            #print(f'All A&B FDEG packages sorted at {self.env.now}')
-            G.FDEG_SORT_TIME = self.env.now
-            self.FDEG_AB_flag = True
-            self.env.process(self.NC_FDEG_pallet_build())
-        elif self.FDEG_AB_flag and len(self.queues['queue_FDEG_fluid'].items) == G.FDEG_LINEHAUL_C_PACKAGES:
-            #print(f'All C FDEG packages sorted at {self.env.now}')
-            self.env.process(self.NC_FDEG_pallet_build())
-        else:
-            yield self.env.timeout(1)
-            self.env.process(self.check_all_FDEG_sorted())
-
-    def check_all_FDE_sorted(self):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        if  len(self.queues['queue_FDE_pallet'].items) == G.FDE_LINEHAUL_A_PACKAGES + G.FDE_LINEHAUL_B_PACKAGES:
-            #print(f'All A&B FDE packages sorted at {self.env.now}')
-            G.FDE_SORT_TIME = self.env.now
-            self.FDE__ABflag = True
-            self.env.process(self.NC_FDE_pallet_build())
-        elif self.FDE_ABflag and len(self.queues['queue_FDE_fluid'].items) == G.FDE_LINEHAUL_C_PACKAGES:
-           # print(f'All C FDE packages sorted at {self.env.now}')
-            self.env.process(self.NC_FDE_pallet_build())
-        else:
-            yield self.env.timeout(1)
-            self.env.process(self.check_all_FDE_sorted())           
-
-    def NC_UPSN_pallet_build(self):
-        UPSN_pallets = math.ceil(G.TOTAL_PACKAGES_UPSN / G.NC_PALLET_MAX_PACKAGES)
-        #print(f'UPSN: {UPSN_pallets} pallets')
-        G.UPSN_PALLETS = UPSN_pallets
-
-        def create_NC_pallets(NC_packages, NC_pallets, queue_name, staged_queue_name, scac):
-
-            with self.current_resource['tm_nonpit_NC'].request(priority=0) as req:
-                yield req
-                current_packages = NC_packages
-                for pallet_num in range(NC_pallets):
-                    pallet_packages = []
-                    packages_for_this_pallet = min(G.NC_PALLET_MAX_PACKAGES, current_packages)
-                    for _ in range(packages_for_this_pallet):
-                        pkg = yield self.queues[queue_name].get()
-                        pallet_packages.append(pkg)
-                        yield self.env.timeout(0)
-                    pallet = National_Carrier_Pallet(self.env, f'Pallet_{G.K}', pallet_packages, scac, self.env.now)
-                    G.K += 1
-                    #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
-                    yield self.queues[staged_queue_name].put(pallet)
-                    if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE * self.var_mag)
-                    elif self.var_status == False:
-                        process_time = G.NC_PALLET_STAGING_RATE
-                    yield self.env.timeout(max(0,process_time))
-                    current_packages -= packages_for_this_pallet
-
-        yield self.env.process(create_NC_pallets(G.TOTAL_PACKAGES_UPSN, UPSN_pallets, 'queue_UPSN_pallet', 'queue_UPSN_staged_pallet','UPSN'))
-
-    def NC_USPS_pallet_build(self):
-        USPS_pallets = math.ceil(G.TOTAL_PACKAGES_USPS / G.NC_PALLET_MAX_PACKAGES)
-        #print(f'USPS: {USPS_pallets} pallets')
-        G.USPS_PALLETS = USPS_pallets
-
-        def create_NC_pallets(NC_packages, NC_pallets, queue_name, staged_queue_name, scac):
-
-            with self.current_resource['tm_nonpit_NC'].request(priority=0) as req:
-                yield req
-                current_packages = NC_packages
-                for pallet_num in range(NC_pallets):
-                    pallet_packages = []
-                    packages_for_this_pallet = min(G.NC_PALLET_MAX_PACKAGES, current_packages)
-                    for _ in range(packages_for_this_pallet):
-                        pkg = yield self.queues[queue_name].get()
-                        pallet_packages.append(pkg)
-                        yield self.env.timeout(0)
-                    pallet = National_Carrier_Pallet(self.env, f'Pallet_{G.K}', pallet_packages, scac, self.env.now)
-                    G.K += 1
-                    #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
-                    yield self.queues[staged_queue_name].put(pallet)
-                    if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE * self.var_mag)
-                    elif self.var_status == False:
-                        process_time = G.NC_PALLET_STAGING_RATE
-                    yield self.env.timeout(max(0,process_time))
-                    current_packages -= packages_for_this_pallet
-
-        yield self.env.process(create_NC_pallets(G.TOTAL_PACKAGES_USPS, USPS_pallets, 'queue_USPS_pallet', 'queue_USPS_staged_pallet','USPS'))
-
-
-    def NC_FDEG_pallet_build(self):
-        FDEG_pallets = math.ceil(G.TOTAL_PACKAGES_FDEG / G.NC_PALLET_MAX_PACKAGES)
-        #print(f'FDEG: {FDEG_pallets} pallets')
-        G.FDEG_PALLETS = FDEG_pallets
-
-        def create_NC_pallets(NC_packages, NC_pallets, queue_name, staged_queue_name, scac):
-
-            with self.current_resource['tm_nonpit_NC'].request(priority=0) as req:
-                yield req
-                current_packages = NC_packages
-                for pallet_num in range(NC_pallets):
-                    pallet_packages = []
-                    packages_for_this_pallet = min(G.NC_PALLET_MAX_PACKAGES, current_packages)
-                    for _ in range(packages_for_this_pallet):
-                        pkg = yield self.queues[queue_name].get()
-                        pallet_packages.append(pkg)
-                        yield self.env.timeout(0)
-                    pallet = National_Carrier_Pallet(self.env, f'Pallet_{G.K}', pallet_packages, scac, self.env.now)
-                    G.K += 1
-                    #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
-                    yield self.queues[staged_queue_name].put(pallet)
-                    if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE * self.var_mag)
-                    elif self.var_status == False:
-                        process_time = G.NC_PALLET_STAGING_RATE
-                    yield self.env.timeout(max(0,process_time))
-                    current_packages -= packages_for_this_pallet
-
-        yield self.env.process(create_NC_pallets(G.TOTAL_PACKAGES_FDEG, FDEG_pallets, 'queue_FDEG_pallet', 'queue_FDEG_staged_pallet','FDEG'))
-
-
-    def NC_FDE_pallet_build(self):
-        FDE_pallets = math.ceil(G.TOTAL_PACKAGES_FDE / G.NC_PALLET_MAX_PACKAGES)
-        #print(f'FDE: {FDE_pallets} pallets')
-        G.FDE_PALLETS = FDE_pallets
-
-        def create_NC_pallets(NC_packages, NC_pallets, queue_name, staged_queue_name, scac):
-
-            with self.current_resource['tm_nonpit_NC'].request(priority=0) as req:
-                yield req
-                current_packages = NC_packages               
-                for pallet_num in range(NC_pallets):
-                    pallet_packages = []
-                    packages_for_this_pallet = min(G.NC_PALLET_MAX_PACKAGES, current_packages)                       
-                    for _ in range(packages_for_this_pallet):
-                        pkg = yield self.queues[queue_name].get()
-                        pallet_packages.append(pkg)
-                        yield self.env.timeout(0)                        
-                    pallet = National_Carrier_Pallet(self.env, f'Pallet_{G.K}', pallet_packages, scac, self.env.now)
-                    G.K += 1
-                    #print(f'NC_{scac}, {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')                        
-                    yield self.queues[staged_queue_name].put(pallet)
-                    if self.var_status == True:
-                        process_time = np.random.normal(G.NC_PALLET_STAGING_RATE, G.NC_PALLET_STAGING_RATE * self.var_mag)
-                    elif self.var_status == False:
-                        process_time = G.NC_PALLET_STAGING_RATE
-                    yield self.env.timeout(max(0,process_time))                      
-                    current_packages -= packages_for_this_pallet
-
-
-        yield self.env.process(create_NC_pallets(G.TOTAL_PACKAGES_FDE, FDE_pallets, 'queue_FDE_pallet', 'queue_FDE_staged_pallet','FDE'))
-
-########################################################
-##### Begin National Carrier Fluid Load Process#########
-########################################################
-
-    def national_carrier_fluid_split_UPSN(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with self.self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_UPSN_fluid"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f"Package {package.tracking_number} sorted to UPSN fluid at {self.env.now}")
-            yield self.queues["queue_UPSN_truck"].put(package)
-            self.env.process(self.national_carrier_fluid_load_UPSN(package))
-
-    def national_carrier_fluid_load_UPSN(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with  self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_UPSN_truck"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f"Package {package.tracking_number} fulid loaded to UPSN at {self.env.now}")
-            yield self.queues["queue_UPSN_Outbound"].put(package)
-
-
-    def national_carrier_fluid_split_USPS(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with  self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_USPS_fluid"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
-            yield self.env.timeout(max(0,process_time))
-           # print(f"Package {package.tracking_number} sorted to USPS fluid at {self.env.now}")
-            yield self.queues["queue_USPS_truck"].put(package)
-            self.env.process(self.national_carrier_fluid_load_USPS(package))
-
-    def national_carrier_fluid_load_USPS(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with  self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_USPS_truck"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
-            yield self.env.timeout(max(0, process_time))
-           # print(f"Package {package.tracking_number} fulid loaded to USPS at {self.env.now}")
-            yield self.queues["queue_USPS_Outbound"].put(package)
-
-
-
-    def national_carrier_fluid_split_FDEG(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_FDEG_fluid"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f"Package {package.tracking_number} sorted to FDEG fluid at {self.env.now}")
-            yield self.queues["queue_FDEG_truck"].put(package)
-            self.env.process(self.national_carrier_fluid_load_FDEG(package))
-
-
-    def national_carrier_fluid_load_FDEG(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_FDEG_truck"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f"Package {package.tracking_number} fulid loaded to FDEG at {self.env.now}")
-            yield self.queues["queue_FDEG_Outbound"].put(package)
-
-
-    def national_carrier_fluid_split_FDE(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_FDE_fluid"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_PICK_RATE, G.NATIONAL_CARRIER_FLUID_PICK_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_PICK_RATE
-            yield self.env.timeout(max(0,process_time))
-           #print(f"Package {package.tracking_number} sorted to FDE fluid at {self.env.now}")
-            yield self.queues["queue_FDE_truck"].put(package)
-            self.env.process(self.national_carrier_fluid_load_FDE(package))
-
-
-    def national_carrier_fluid_load_FDE(self, package):
-        while self.LHC_arrive_flag and not self.partition_3_flag:
-            yield self.env.timeout(1)
-        #while not self.resources_available:
-        #    yield self.env.timeout(1)
-        with self.current_resource['tm_nonpit_NC'].request(priority=1) as req:
-            yield req
-            yield self.queues["queue_FDE_truck"].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.NATIONAL_CARRIER_FLUID_LOAD_RATE, G.NATIONAL_CARRIER_FLUID_LOAD_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.NATIONAL_CARRIER_FLUID_LOAD_RATE
-            yield self.env.timeout(max(0,process_time))
-           # print(f"Package {package.tracking_number} fulid loaded to FDE at {self.env.now}")
-            yield self.queues["queue_FDE_Outbound"].put(package)
-
-
-
-    ########################################################
-    ############## Begin TLMD Sort Process #################
-    ########################################################
-    
-    # this will need to be updated to include the logic associated with the different partitions
-    def tlmd_buffer_sort(self, package):
-        while self.LHC_arrive_flag and not self.partition_2_flag:
-            yield self.env.timeout(1)
-
-        with self.current_resource['tm_nonpit_buffer'].request(priority=1) as req:
-            yield req
-            yield self.queues['queue_tlmd_buffer_sort'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_BUFFER_SORT_RATE
-            yield self.env.timeout(max(0,process_time))
-            #print(f'Package {package.tracking_number} sorted to TLMD Buffer at {self.env.now}')
-            yield self.queues['queue_tlmd_pallet'].put(package)
-            if len(self.queues['queue_tlmd_pallet'].items) == G.TLMD_LINEHAUL_A_PACKAGES + G.TLMD_LINEHAUL_B_PACKAGES:
-                self.TLMD_AB_pre_flag = True
-            self.env.process(self.check_all_packages_staged())
-
-    
-    def check_all_packages_staged(self):
-        while self.LHC_arrive_flag and not self.partition_2_flag:
-            yield self.env.timeout(1)   
-        if len(self.queues['queue_tlmd_pallet'].items) == G.TLMD_LINEHAUL_A_PACKAGES + G.TLMD_LINEHAUL_B_PACKAGES + G.TLMD_LINEHAUL_TFC_PACKAGES and not self.TLMD_AB_flag:
-            self.ab_TLMD_packages_staged_time = self.env.now
-            G.TLMD_AB_INDUCT_TIME = self.ab_TLMD_packages_staged_time
-           # print(f'All tlmd A&B packages staged at {self.ab_TLMD_packages_staged_time}')
-            self.TLMD_AB_flag = True
-            self.TFC_flag = False
-            G.TLMD_STAGED_PACKAGES = self.queues['queue_tlmd_pallet'].items
-            self.env.process(self.TLMD_pallet_build())
-        elif self.TLMD_AB_flag and len(self.queues['queue_tlmd_pallet'].items) == G.TLMD_LINEHAUL_C_PACKAGES:
-            self.c_TLDM_packages_staged_time = self.env.now
-            G.TLMD_C_INDUCT_TIME = self.c_TLDM_packages_staged_time
-            #print(f'All tlmd C packages staged at {self.c_TLDM_packages_staged_time}')
-            self.env.process(self.TLMD_pallet_build())
-        else:
-            yield self.env.timeout(1)
-            self.env.process(self.check_all_packages_staged())
-
-
-    def TLMD_pallet_build(self):
-    # Calculate the number of packages in each partition
-        partition_1_packages = round(G.PARTITION_1_RATIO * G.TOTAL_PACKAGES_TLMD)
-        partition_2_packages = round(G.PARTITION_2_RATIO * G.TOTAL_PACKAGES_TLMD)
-        partition_3_packages = round(G.PARTITION_3_RATIO * G.TOTAL_PACKAGES_TLMD)
-
-        G.TLMD_PARTITION_1_PACKAGES = partition_1_packages
-        G.TLMD_PARTITION_2_PACKAGES = partition_2_packages
-        G.TLMD_PARTITION_3_PACKAGES = partition_3_packages
-
-        #print(f'Partition 1: {partition_1_packages} packages')
-        #print(f'Partition 2: {partition_2_packages} packages')
-        #print(f'Partition 3: {partition_3_packages} packages')
-        #print(f'Total packages: {partition_1_packages + partition_2_packages + partition_3_packages}')
-#
-        G.TLMD_PARTITION_3AB_PACKAGES = G.TLMD_LINEHAUL_A_PACKAGES + G.TLMD_LINEHAUL_B_PACKAGES +G.TLMD_LINEHAUL_TFC_PACKAGES - G.TLMD_PARTITION_1_PACKAGES - G.TLMD_PARTITION_2_PACKAGES
-        #print(f'partition 3AB pakages: {G.TLMD_PARTITION_3AB_PACKAGES}')
-        if G.TLMD_PARTITION_3AB_PACKAGES <0:
-            raise ValueError("Value for partition 3 cannot be negative!")
-
-        # Handle any rounding discrepancies
-        if partition_1_packages + partition_2_packages + partition_3_packages != G.TOTAL_PACKAGES_TLMD:
-            partition_1_packages += G.TOTAL_PACKAGES_TLMD - (partition_1_packages + partition_2_packages + partition_3_packages)
-            #print(f'Adjusted Partition 1: {partition_1_packages} packages')
-
-        # Calculate the number of pallets needed for each partition
-        partition_1_pallets = math.ceil(partition_1_packages / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
-        partition_2_pallets = math.ceil(partition_2_packages / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
-        partition_3_pallets = math.ceil(partition_3_packages / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
-        G.TOTAL_PALLETS_TLMD = partition_1_pallets + partition_2_pallets + partition_3_pallets
-        #print(f'total pallets: {G.TOTAL_PALLETS_TLMD}')
-        #print(f'Partition 1: {partition_1_pallets} pallets')
-        #print(f'Partition 2: {partition_2_pallets} pallets')
-
-        if not self.LHC_flag:
-            partition_3_packages_actual = len(self.queues['queue_tlmd_pallet'].items) - partition_2_packages - partition_1_packages
-            partition_3AB_pallets_actual = math.ceil(partition_3_packages_actual / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
-           # print(f'Partition 3: {partition_3AB_pallets_actual} pallets')
-        elif self.LHC_flag:
-            partition_3_packages_actual = len(self.queues['queue_tlmd_pallet'].items)
-            partition_3C_pallets_actual = math.ceil(partition_3_packages_actual / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
-           # print(f'Partition 3 Same Day: {partition_3C_pallets_actual} pallets')
-
-        # Function to create pallets for a given partition
-        def create_pallets(partition_packages, partition_pallets, queue_name, staged_queue_name):
-
-            current_packages = partition_packages
-            for pallet_num in range(partition_pallets):
-                pallet_packages = []
-                packages_for_this_pallet = min(G.TLMD_PARTITION_PALLET_MAX_PACKAGES, current_packages)
-                for _ in range(packages_for_this_pallet):
-                    pkg = yield self.queues[queue_name].get()
-                    pallet_packages.append(pkg)
-                    yield self.env.timeout(0)
-                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_{G.I}', pallet_packages, self.env.now)
-                G.I += 1
-               # print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
-                yield self.queues[staged_queue_name].put(pallet)
-                yield self.env.timeout(0)
-                self.env.process(self.check_all_pallets_staged())
-                current_packages -= packages_for_this_pallet
-
-        # Create pallets for each partition
-        if not self.LHC_flag:
-            yield self.env.process(create_pallets(partition_1_packages, partition_1_pallets, 'queue_tlmd_pallet', 'queue_tlmd_1_staged_pallet'))
-            yield self.env.process(create_pallets(partition_2_packages, partition_2_pallets, 'queue_tlmd_pallet', 'queue_tlmd_2_staged_pallet'))
-            yield self.env.process(create_pallets(partition_3_packages_actual, partition_3AB_pallets_actual, 'queue_tlmd_pallet', 'queue_tlmd_3_staged_pallet'))
-        elif self.LHC_flag:
-            yield self.env.process(create_pallets(partition_3_packages_actual, partition_3C_pallets_actual, 'queue_tlmd_pallet', 'queue_tlmd_3_staged_pallet'))
-            self.LHC_flag = False
-######        
-    def check_all_pallets_staged(self):
-        while self.LHC_flag and not self.partition_2_flag:
-            yield self.env.timeout(1)
-        while len(self.queues['queue_tlmd_pallet'].items) > 0:
-            yield self.env.timeout(1)
-        self.env.process(self.feed_TLMD_induct_staging())
-######
-    def feed_TLMD_induct_staging(self):
-        #while self.LHC_flag and self.partition_2_flag:
-            #yield self.env.timeout(1)
-        with self.current_resource['tm_TLMD_induct_stage'].request(priority=0) as req:
-            yield req
-            while len(self.queues['queue_tlmd_induct_staging_pallets'].items) >= self.queues['queue_tlmd_induct_staging_pallets'].capacity:
-                yield self.env.timeout(1)
-            if len(self.queues['queue_tlmd_1_staged_pallet'].items) > 0:
-                pallet = yield self.queues['queue_tlmd_1_staged_pallet'].get()
-                #print(f'grabbed pallet {pallet.pallet_id} from queue_tlmd_1_staged_pallet at {self.env.now}')
-            elif len(self.queues['queue_tlmd_2_staged_pallet'].items) > 0:
-                pallet = yield self.queues['queue_tlmd_2_staged_pallet'].get()
-                #print(f'grabbed pallet {pallet.pallet_id} from queue_tlmd_2_staged_pallet at {self.env.now}')
-            elif len(self.queues['queue_tlmd_3_staged_pallet'].items) > 0:
-                pallet = yield self.queues['queue_tlmd_3_staged_pallet'].get()
-                #print(f'grabbed pallet {pallet.pallet_id} from queue_tlmd_3_staged_pallet at {self.env.now}')
-            else:
-                #print('No pallets left in any queue')
-                return
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_INDUCT_STAGE_RATE, G.TLMD_INDUCT_STAGE_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_INDUCT_STAGE_RATE
-            yield self.env.timeout(max(0,process_time))
-            pallet.current_queue = 'queue_tlmd_induct_staging_pallets'
-            yield self.queues['queue_tlmd_induct_staging_pallets'].put(pallet)
-            #print(f'Pallet {pallet.pallet_id} staged for TLMD induction at {self.env.now}')
-            for package in pallet.packages:
-                package.current_queue = 'queue_tlmd_induct_staging_packages'
-                yield self.queues['queue_tlmd_induct_staging_packages'].put(package)
-                self.env.process(self.tlmd_induct_package(package, pallet))
-    
-#####
-    def tlmd_induct_package(self, package, pallet):
-        #while self.LHC_flag and self.partition_2_flag:
-            #yield self.env.timeout(1)
-        with self.current_resource['tm_TLMD_induct'].request(priority=0) as req:  
-            yield req
-            yield self.queues['queue_tlmd_induct_staging_packages'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_INDUCTION_RATE, G.TLMD_INDUCTION_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_INDUCTION_RATE
-            yield self.env.timeout(max(0,process_time))
-            package.current_queue = 'queue_tlmd_splitter'
-            #print(f'Package {package.tracking_number}, {package.scac} inducted at TLMD at {self.env.now}')
-            yield self.queues['queue_tlmd_splitter'].put(package)
-            pallet.current_packages -= 1  
-            if pallet.current_packages == 0:
-                # Remove the pallet from queue_induct_staging_pallets
-                self.tlmd_remove_pallet_from_queue(pallet)
-            self.env.process(self.tlmd_lane_pickoff(package))
-
-    def tlmd_remove_pallet_from_queue(self, pallet):
-        # Manually search for and remove the pallet from the queue
-                for i, p in enumerate(self.queues['queue_tlmd_induct_staging_pallets'].items):
-                    if p.pallet_id == pallet.pallet_id:
-                        del self.queues['queue_tlmd_induct_staging_pallets'].items[i]
-                        #print(f'Pallet {pallet.pallet_id} removed from queue_tlmd_induct_staging_pallets at {self.env.now}')
-                        break
-
-
-    def tlmd_lane_pickoff(self, package):
-        #while self.LHC_flag and self.partition_2_flag:
-            #yield self.env.timeout(1)
-
-        with self.current_resource['tm_TLMD_picker'].request() as req:
-            yield req
-            yield self.queues['queue_tlmd_splitter'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.SPLITTER_RATE, G.SPLITTER_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.SPLITTER_RATE
-            yield self.env.timeout(max(0,process_time))
-            package.current_queue = 'queue_tlmd_final_sort'
-            #print(f'Package {package.tracking_number} split to TLMD Final Sort at {self.env.now}')
-            yield self.queues['queue_tlmd_final_sort'].put(package)
-            self.env.process(self.tlmd_final_sort(package))
-    
-    def tlmd_final_sort(self, package):
-        #while self.LHC_flag and self.partition_2_flag:
-            #yield self.env.timeout(1)
-
-        with self.current_resource['tm_TLMD_sort'].request() as req:
-            yield req
-            yield self.queues['queue_tlmd_final_sort'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_FINAL_SORT_RATE, G.TLMD_FINAL_SORT_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_FINAL_SORT_RATE
-            #print(f'Final Sort Process Rate: {process_time}')
-            yield self.env.timeout(max(0,process_time))
-            #print(f'Package {package.tracking_number} sorted to TLMD Cart at {self.env.now}')
-            yield self.queues['queue_tlmd_cart'].put(package)
-            self.env.process(self.check_all_TLMD_sorted())
-
-
-    def check_all_TLMD_sorted(self):
-        #while self.LHC_flag and self.partition_2_flag:
-            #yield self.env.timeout(1)
-        # print(f'Partition 1 Remaining: {len(self.queues["queue_tlmd_1_staged_pallet"].items)}')
-        # print(f'Partition 2 Remaining: {len(self.queues["queue_tlmd_2_staged_pallet"].items)}')
-        # print(f'Partition 3 Remaining: {len(self.queues["queue_tlmd_3_staged_pallet"].items)}')
-        # print(f'TLMD_Packages Sorted: {len(self.queues["queue_tlmd_cart"].items)}')
-        # print(f'LH_C Status: {self.LHC_flag}')
-        # print(f'Partition 2 Status: {self.partition_2_flag}')
-        # print(f'Time is {self.env.now}')
-
-        
-        if (
-            not self.partition_1_flag
-            and len(self.queues['queue_tlmd_cart'].items) >= G.TLMD_PARTITION_1_PACKAGES
-        ):
-                all_packages_staged_time_1 = self.env.now
-                G.TLMD_PARTITION_1_SORT_TIME = all_packages_staged_time_1
-                #print(f'All partition 1 packages sorted at {all_packages_staged_time_1}')
-                self.partition_1_flag = True  # Mark this partition as handled
-
-        # Check for partition 2 only if partition 1 is done
-        elif (
-            not self.partition_2_flag
-            and len(self.queues['queue_tlmd_cart'].items) >= G.TLMD_PARTITION_2_PACKAGES + G.TLMD_PARTITION_1_PACKAGES
-        ):
-            all_packages_staged_time_2 = self.env.now
-            G.TLMD_PARTITION_2_SORT_TIME = all_packages_staged_time_2
-            #print(f'All partition 2 packages sorted at {all_packages_staged_time_2}')
-            self.partition_2_flag = True  # Mark this partition as handled            
-
-        # Check for partition 3 only if partition 2 is done
-        elif (
-            not self.partition_3AB_flag
-            and len(self.queues['queue_tlmd_cart'].items) >= G.TLMD_PARTITION_3AB_PACKAGES + G.TLMD_PARTITION_2_PACKAGES + G.TLMD_PARTITION_1_PACKAGES
-        ):
-            all_packages_staged_time_3AB = self.env.now
-            G.TLMD_PARTITION_3AB_SORT_TIME = all_packages_staged_time_3AB
-            #print(f'All partition 3AB packages sorted at {all_packages_staged_time_3AB}')
-            self.partition_3AB_flag = True  # Mark this partition as handled       
-
-        elif (
-            not self.partition_3_flag
-            and len(self.queues['queue_tlmd_cart'].items) >= G.TOTAL_PACKAGES_TLMD
-        ):
-            all_packages_staged_time_3 = self.env.now
-            G.TLMD_PARTITION_3_SORT_TIME = all_packages_staged_time_3
-            #print(f'All partition 3 packages sorted at {all_packages_staged_time_3}')
-            self.partition_3_flag = True  # Mark this partition as handled
-
-        # Check if all partitions are done
-        if self.partition_1_flag and self.partition_2_flag and self.partition_3_flag:
-            G.TLMD_SORTED_PACKAGES = len(self.queues['queue_tlmd_cart'].items)
-            #print(f'All {G.TLMD_SORTED_PACKAGES} TLMD packages sorted at {self.env.now}')
-            #self.env.process(self.TLMD_cart_build())
-        
-        else:
-            G.PASSED_OVER_PALLETS_1 = self.queues['queue_tlmd_1_staged_pallet'].items
-            G.PASSED_OVER_PALLETS_2 = self.queues['queue_tlmd_2_staged_pallet'].items
-            G.PASSED_OVER_PALLETS_3 = self.queues['queue_tlmd_3_staged_pallet'].items
-            G.PASSED_OVER_PACKAGES = G.TOTAL_PACKAGES_TLMD - len(self.queues['queue_tlmd_cart'].items)
-
-        yield self.env.timeout(0)
-
-    def TLMD_cart_build(self):
-        while self.LHC_flag and self.partition_2_flag:
-            yield self.env.timeout(1)
-        partition_1_packages = G.TLMD_PARTITION_1_PACKAGES
-        partition_2_packages = G.TLMD_PARTITION_2_PACKAGES
-        partition_3_packages = G.TLMD_PARTITION_3_PACKAGES
-    
-        
-        # print(f'Partition 1: {partition_1_packages} packages')
-        # print(f'Partition 2: {partition_2_packages} packages')
-        # print(f'Partition 3: {partition_3_packages} packages')
-        # print(f'Total packages: {partition_1_packages + partition_2_packages + partition_3_packages}')
-        
-        # Calculate the number of pallets needed for each partition
-        partition_1_carts = math.ceil(partition_1_packages / G.TLMD_CART_MAX_PACKAGES)
-        partition_2_carts = math.ceil(partition_2_packages / G.TLMD_CART_MAX_PACKAGES)
-        partition_3_carts = math.ceil(partition_3_packages / G.TLMD_CART_MAX_PACKAGES)
-
-        # print(f'Partition 1: {partition_1_carts} carts')
-        # print(f'Partition 2: {partition_2_carts} carts')
-        # print(f'Partition 3: {partition_3_carts} carts')
-        # print(F'total carts: {partition_1_carts + partition_2_carts + partition_3_carts}')
-
-        G.TOTAL_CARTS_TLMD = partition_1_carts + partition_2_carts + partition_3_carts
-
-    def run_simulation(self, until):
-        return self.env.timeout(until)
-    
+ 
 #####################################################################################
 
-def setup_simulation(Method,
-                     day_pallets, 
-                    night_tm_pit_unload, 
+def setup_simulation(day_pallets, 
                     night_tm_pit_induct, 
                     night_tm_nonpit_split, 
                     night_tm_nonpit_NC, 
@@ -2245,7 +1261,6 @@ def setup_simulation(Method,
                     night_tm_TLMD_picker,
                     night_tm_TLMD_sort,
                     night_tm_TLMD_stage,
-                    day_tm_pit_unload,
                     day_tm_pit_induct,
                     day_tm_nonpit_split,
                     day_tm_nonpit_NC,
@@ -2269,7 +1284,7 @@ def setup_simulation(Method,
         all_lh_packages = sum([len(row['packages']) for i, row in filtered_df.iterrows()])
         return all_lh_packages
 
-    total_TMs_night = night_tm_pit_unload + night_tm_pit_induct + night_tm_nonpit_split + night_tm_nonpit_NC + night_tm_nonpit_buffer
+    total_TMs_night = + night_tm_pit_induct + night_tm_nonpit_split + night_tm_nonpit_NC + night_tm_nonpit_buffer
     total_packages = sum([len(row['packages']) for i, row in day_pallets.iterrows()])
     all_packages = [pkg for sublist in day_pallets['packages'] for pkg in sublist]
     total_packages_NC = len([pkg for pkg in all_packages if pkg[1] in ['UPSN', 'USPS', 'FDEG', 'FDE']])
@@ -2312,6 +1327,8 @@ def setup_simulation(Method,
     # print(f'Total Linehaul TFC Packages: {linehaul_TFC_packages}')
     
     G.LINEHAUL_C_TIME = linehaul_C_df['earliest_arrival'].min()
+    G.LINEHAUL_B_TIME = linehaul_B_df['earliest_arrival'].min()
+    G.LINEHAUL_A_TIME = linehaul_A_df['earliest_arrival'].min()
     G.LINEHAUL_TFC_TIME = linehaul_TFC_df['earliest_arrival'].iloc[0]
 
     G.TOTAL_PACKAGES = total_packages
@@ -2362,8 +1379,7 @@ def setup_simulation(Method,
 
     env = simpy.Environment()
 
-    current_resources = {'tm_pit_unload': simpy.Resource(env, capacity=night_tm_pit_unload), 
-                        'tm_pit_induct': simpy.PriorityResource(env, capacity=night_tm_pit_induct), 
+    current_resources = {'tm_pit_induct': simpy.PriorityResource(env, capacity=night_tm_pit_induct), 
                         'tm_nonpit_split': simpy.Resource(env, capacity=night_tm_nonpit_split), 
                         'tm_nonpit_NC': simpy.PriorityResource(env, capacity=night_tm_nonpit_NC), 
                         'tm_nonpit_buffer': simpy.PriorityResource(env, capacity=night_tm_nonpit_buffer),
@@ -2371,8 +1387,8 @@ def setup_simulation(Method,
                         'tm_TLMD_picker': simpy.Resource(env, capacity=night_tm_TLMD_picker),
                         'tm_TLMD_sort': simpy.Resource(env, capacity=night_tm_TLMD_sort),
                         'tm_TLMD_stage': simpy.Resource(env, capacity=night_tm_TLMD_stage)}
-    if Method:
-        sortation_center = Sortation_Center_Original(env, 
+
+    sortation_center = Sortation_Center_Original(env, 
                                         day_pallets, 
                                         USPS_Fluid_Status,
                                         UPSN_Fluid_Status,
@@ -2382,23 +1398,14 @@ def setup_simulation(Method,
                                         var_status,
                                         process_variance
                                         )
-    else:
-        sortation_center = Sortation_Center_Change(env, 
-                                        day_pallets, 
-                                        USPS_Fluid_Status,
-                                        UPSN_Fluid_Status,
-                                        FDEG_Fluid_Status,
-                                        FDE_Fluid_Status,
-                                        current_resources,
-                                        var_status,
-                                        process_variance
-                                        ) 
 
     # Start tracking metrics and schedule arrivals
     env.process(sortation_center.track_metrics())
     sortation_center.schedule_arrivals()
     env.process(linehaul_C_arrival(env,sortation_center))
-    env.process(TFC_arrival(env,sortation_center))
+    env.process(linehaul_B_arrival(env,sortation_center))
+    env.process(linehaul_A_arrival(env,sortation_center))
+
 
     # for start, end in unavailable_periods:
     #     env.process(make_resources_unavailable(env, sortation_center, start, end))
@@ -2406,7 +1413,6 @@ def setup_simulation(Method,
     env.process(manage_resources(env, 
                                  sortation_center,
                                  current_resources,
-                                 night_tm_pit_unload, 
                                  night_tm_pit_induct, 
                                  night_tm_nonpit_split, 
                                  night_tm_nonpit_NC, 
@@ -2416,7 +1422,6 @@ def setup_simulation(Method,
                                  night_tm_TLMD_picker,
                                  night_tm_TLMD_sort,
                                  night_tm_TLMD_stage,
-                                 day_tm_pit_unload,
                                  day_tm_pit_induct,
                                  day_tm_nonpit_split,
                                  day_tm_nonpit_NC,
@@ -2436,7 +1441,6 @@ def setup_simulation(Method,
 def Simulation_Machine(predict,
                        night_total_tm,
                        day_total_tm,
-                       night_tm_pit_unload, 
                         night_tm_pit_induct, 
                         night_tm_nonpit_split, 
                         night_tm_nonpit_NC, 
@@ -2446,7 +1450,6 @@ def Simulation_Machine(predict,
                         night_tm_TLMD_picker,
                         night_tm_TLMD_sort, 
                         night_tm_TLMD_stage,
-                        day_tm_pit_unload,
                         day_tm_pit_induct,
                         day_tm_nonpit_split,
                         day_tm_nonpit_NC,
@@ -2479,7 +1482,7 @@ def Simulation_Machine(predict,
         linehaul=('Linehaul', 'first')
     ).reset_index()
 
-    if night_tm_pit_unload + night_tm_pit_induct + night_tm_nonpit_split + night_tm_nonpit_NC + night_tm_nonpit_buffer > night_total_tm:
+    if  night_tm_pit_induct + night_tm_nonpit_split + night_tm_nonpit_NC + night_tm_nonpit_buffer > night_total_tm:
         raise ValueError('Total number of TMs exceeds the limit')   
     
     if night_tm_TLMD_induct + night_tm_TLMD_picker + night_tm_TLMD_sort + night_tm_TLMD_induct_stage  >  night_total_tm:
@@ -2489,7 +1492,7 @@ def Simulation_Machine(predict,
         raise ValueError('Total number of TMs exceeds the limit')
     
     
-    if day_tm_pit_unload + day_tm_pit_induct + day_tm_nonpit_split + day_tm_nonpit_NC + day_tm_nonpit_buffer > day_total_tm:
+    if  day_tm_pit_induct + day_tm_nonpit_split + day_tm_nonpit_NC + day_tm_nonpit_buffer > day_total_tm:
         raise ValueError('Total number of TMs exceeds the limit')   
     
     if day_tm_TLMD_induct + day_tm_TLMD_picker + day_tm_TLMD_sort + day_tm_TLMD_induct_stage  >  day_total_tm:
@@ -2508,9 +1511,7 @@ def Simulation_Machine(predict,
     var_status = False
     process_variance = 0
     # Setup inbound induct simulation
-    env, sortation_center = setup_simulation(True,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
+    env, sortation_center = setup_simulation(pallet_info,  
                                              night_tm_pit_induct, 
                                              night_tm_nonpit_split, 
                                              night_tm_nonpit_NC, 
@@ -2520,7 +1521,6 @@ def Simulation_Machine(predict,
                                              night_tm_TLMD_picker,
                                              night_tm_TLMD_sort, 
                                              night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
                                              day_tm_pit_induct,
                                              day_tm_nonpit_split,
                                              day_tm_nonpit_NC,
@@ -2545,7 +1545,7 @@ def Simulation_Machine(predict,
     #print("End Process")
     #print(len(G.TLMD_STAGED_PACKAGES))
 
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages
@@ -2686,191 +1686,12 @@ def Simulation_Machine(predict,
     
     ##########################################
 
-    env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-    # Run inbound induct simulation
-    #print("Begin Process")
-    env.run(until=1200)
-    #print("End Process")
-    #print(len(G.TLMD_STAGED_PACKAGES))
-
-    #plot_metrics(sortation_center.metrics)
-
-    results_C = {
-    # Total Packages
-    "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-    "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-    "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-    # TLMD Partition Packages
-    "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-    "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-    "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-    "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-    # Sorted Packages
-    "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-    # Linehaul Totals
-    "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-    "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-    "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-    # Linehaul by Carrier
-    "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-    "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-    "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-    "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-    "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-    "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-    "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-    "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-    "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-    "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-    "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-    "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-    "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-    "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-    "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-    "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-    # Induction Times
-    "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-    "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-    'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-    # Partition Sort Times
-    "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-    "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-    "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-    "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-    # Sort Times by Carrier
-    "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-    "USPS_SORT_TIME": G.USPS_SORT_TIME,
-    "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-    "FDE_SORT_TIME": G.FDE_SORT_TIME,
-    # Pallet Counts
-    "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-    "UPSN_PALLETS": G.UPSN_PALLETS,
-    "USPS_PALLETS": G.USPS_PALLETS,
-    "FDEG_PALLETS": G.FDEG_PALLETS,
-    "FDE_PALLETS": G.FDE_PALLETS,
-    # Passed-Over Pallets
-    "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-    "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-    "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-    "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-}
-
-   
-    G.TOTAL_PACKAGES = None  # Total packages to be processed
-    G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-    G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-    G.TLMD_AB_INDUCT_TIME = None
-    G.TLMD_C_INDUCT_TIME = None
-    G.TLMD_STAGED_PACKAGES = None
-    G.TLMD_PARTITION_1_PACKAGES = None
-    G.TLMD_PARTITION_2_PACKAGES = None
-    G.TLMD_PARTITION_3AB_PACKAGES = None
-    G.TLMD_PARTITION_3_PACKAGES = None
-    G.TOTAL_PALLETS_TLMD = None
-    G.TLMD_PARTITION_1_SORT_TIME = None
-    G.TLMD_PARTITION_2_SORT_TIME = None 
-    G.TLMD_PARTITION_3AB_SORT_TIME = None
-    G.TLMD_PARTITION_3_SORT_TIME = None
-    G.TLMD_SORTED_PACKAGES = None
-    G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-    G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-    G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-    G.TLMD_OUTBOUND_PACKAGES = None
-    G.I=1
-    G.J=1
-    G.K=1
-    G.PASSED_OVER_PALLETS_1 = None
-    G.PASSED_OVER_PALLETS_2 = None
-    G.PASSED_OVER_PALLETS_3 = None
-    G.PASSED_OVER_PACKAGES = None
-
-    G.TOTAL_LINEHAUL_A_PACKAGES = None
-    G.TOTAL_LINEHAUL_B_PACKAGES = None
-    G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-    G.USPS_LINEHAUL_A_PACKAGES = None
-    G.USPS_LINEHAUL_B_PACKAGES = None
-    G.USPS_LINEHAUL_C_PACKAGES = None
-
-    G.UPSN_LINEHAUL_A_PACKAGES = None
-    G.UPSN_LINEHAUL_B_PACKAGES = None
-    G.UPSN_LINEHAUL_C_PACKAGES = None
-
-    G.FDEG_LINEHAUL_A_PACKAGES = None
-    G.FDEG_LINEHAUL_B_PACKAGES = None
-    G.FDEG_LINEHAUL_C_PACKAGES = None
-
-    G.FDE_LINEHAUL_A_PACKAGES = None
-    G.FDE_LINEHAUL_B_PACKAGES = None
-    G.FDE_LINEHAUL_C_PACKAGES = None
-
-    G.TLMD_LINEHAUL_A_PACKAGES = None
-    G.TLMD_LINEHAUL_B_PACKAGES = None
-    G.TLMD_LINEHAUL_C_PACKAGES = None
-
-    G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-    G.LINEHAUL_C_TIME = None
-    G.LINEHAUL_TFC_TIME = None
-
-    G.TOTAL_PACKAGES_UPSN = None
-    G.TOTAL_PACKAGES_USPS = None
-    G.TOTAL_PACKAGES_FDEG = None
-    G.TOTAL_PACKAGES_FDE = None
-    G.UPSN_PALLETS = None
-    G.USPS_PALLETS = None
-    G.FDEG_PALLETS = None
-    G.FDE_PALLETS = None
-    G.UPSN_SORT_TIME = None
-    G.USPS_SORT_TIME = None
-    G.FDEG_SORT_TIME = None
-    G.FDE_SORT_TIME = None
-
-    G.TOTAL_CARTS_TLMD = None
-    G.PASSED_OVER_PACKAGES = None
-
-    del sortation_center    
-    gc.collect()
-
-
     var_status = True
 
     if var_05:
-        process_variance = 0.5
+        process_variance = 0.05
         # Setup inbound induct simulation
-        env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info, 
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -2880,7 +1701,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -3044,192 +1864,13 @@ def Simulation_Machine(predict,
 
         del sortation_center    
         gc.collect()
-
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_05_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
     
     else:
         results_var_05 = None
-        results_var_05_C =None
 
     if var_10:
         process_variance = .1
-        env, sortation_center = setup_simulation(True,
-                                                 pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info, 
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -3239,7 +1880,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -3398,193 +2038,15 @@ def Simulation_Machine(predict,
         gc.collect()
 
 
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_10_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
 
     else:
         results_var_10 = None
-        results_var_10_C = None
 
     if var_15:
 
         process_variance = 0.15
         # Setup inbound induct simulation
-        env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info,  
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -3594,7 +2056,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -3760,193 +2221,13 @@ def Simulation_Machine(predict,
         gc.collect()
 
 
-
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_15_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
-
     else:
         results_var_15 = None
-        results_var_15_C = None
 
     if var_20:
 
         process_variance = 0.2
-        env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info, 
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -3956,7 +2237,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -4114,193 +2394,13 @@ def Simulation_Machine(predict,
         del sortation_center    
         gc.collect()
 
-
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_20_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
-
     else:
         results_var_20 = None
-        results_var_20_C = None
 
     if var_25:
 
         process_variance = 0.25
-        env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info, 
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -4310,7 +2410,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -4468,193 +2567,14 @@ def Simulation_Machine(predict,
         del sortation_center    
         gc.collect()
 
-
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_25_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
     
     else:
         results_var_25 = None
-        results_var_25_C = None
 
     if var_30:
 
         process_variance = 0.3
-        env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info,  
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -4664,7 +2584,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -4822,192 +2741,14 @@ def Simulation_Machine(predict,
         del sortation_center    
         gc.collect()
 
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_30_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
     
     else:
         results_var_30 = None
-        results_var_30_C = None
 
-    if var_35 == True:
+    if var_35:
 
         process_variance = 0.35
-        env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+        env, sortation_center = setup_simulation(pallet_info, 
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -5017,7 +2758,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -5175,192 +2915,15 @@ def Simulation_Machine(predict,
         del sortation_center    
         gc.collect()
 
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_35_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
         
     else:
         results_var_35 = None
-        results_var_35_C = None
 
     if var_40:
 
         process_variance = 0.4
         env, sortation_center = setup_simulation(True,
-                                                pallet_info, 
-                                                night_tm_pit_unload, 
+                                                pallet_info,  
                                                 night_tm_pit_induct, 
                                                 night_tm_nonpit_split, 
                                                 night_tm_nonpit_NC, 
@@ -5370,7 +2933,6 @@ def Simulation_Machine(predict,
                                                 night_tm_TLMD_picker,
                                                 night_tm_TLMD_sort, 
                                                 night_tm_TLMD_stage,
-                                                day_tm_pit_unload,
                                                 day_tm_pit_induct,
                                                 day_tm_nonpit_split,
                                                 day_tm_nonpit_NC,
@@ -5529,188 +3091,11 @@ def Simulation_Machine(predict,
         gc.collect()
 
 
-        env, sortation_center = setup_simulation(False,
-                                             pallet_info, 
-                                             night_tm_pit_unload, 
-                                             night_tm_pit_induct, 
-                                             night_tm_nonpit_split, 
-                                             night_tm_nonpit_NC, 
-                                             night_tm_nonpit_buffer,
-                                             night_tm_TLMD_induct,
-                                             night_tm_TLMD_induct_stage,
-                                             night_tm_TLMD_picker,
-                                             night_tm_TLMD_sort, 
-                                             night_tm_TLMD_stage,
-                                             day_tm_pit_unload,
-                                             day_tm_pit_induct,
-                                             day_tm_nonpit_split,
-                                             day_tm_nonpit_NC,
-                                             day_tm_nonpit_buffer,
-                                             day_tm_TLMD_induct,
-                                             day_tm_TLMD_induct_stage,
-                                             day_tm_TLMD_picker,
-                                             day_tm_TLMD_sort,
-                                             day_tm_TLMD_stage,
-                                             USPS_Fluid_Status,
-                                             UPSN_Fluid_Status,
-                                             FDEG_Fluid_Status,
-                                             FDE_Fluid_Status,
-                                             var_status,
-                                             process_variance
-                                             )   
-
-
-        # Run inbound induct simulation
-        #print("Begin Process")
-        env.run(until=1200)
-        #print("End Process")
-        #print(len(G.TLMD_STAGED_PACKAGES))
-
-        #plot_metrics(sortation_center.metrics)
-
-        results_var_40_C = {
-        # Total Packages
-        "TOTAL_PACKAGES": G.TOTAL_PACKAGES,
-        "TOTAL_PACKAGES_TLMD": G.TOTAL_PACKAGES_TLMD,
-        "TOTAL_PACKAGES_NC": G.TOTAL_PACKAGES_NC,
-        # TLMD Partition Packages
-        "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
-        "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
-        "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
-        # Sorted Packages
-        "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
-        # Linehaul Totals
-        "TOTAL_LINEHAUL_A_PACKAGES": G.TOTAL_LINEHAUL_A_PACKAGES,
-        "TOTAL_LINEHAUL_B_PACKAGES": G.TOTAL_LINEHAUL_B_PACKAGES,
-        "TOTAL_LINEHAUL_C_PACKAGES": G.TOTAL_LINEHAUL_C_PACKAGES,
-        # Linehaul by Carrier
-        "USPS_LINEHAUL_A_PACKAGES": G.USPS_LINEHAUL_A_PACKAGES,
-        "USPS_LINEHAUL_B_PACKAGES": G.USPS_LINEHAUL_B_PACKAGES,
-        "USPS_LINEHAUL_C_PACKAGES": G.USPS_LINEHAUL_C_PACKAGES,
-        "UPSN_LINEHAUL_A_PACKAGES": G.UPSN_LINEHAUL_A_PACKAGES,
-        "UPSN_LINEHAUL_B_PACKAGES": G.UPSN_LINEHAUL_B_PACKAGES,
-        "UPSN_LINEHAUL_C_PACKAGES": G.UPSN_LINEHAUL_C_PACKAGES,
-        "FDEG_LINEHAUL_A_PACKAGES": G.FDEG_LINEHAUL_A_PACKAGES,
-        "FDEG_LINEHAUL_B_PACKAGES": G.FDEG_LINEHAUL_B_PACKAGES,
-        "FDEG_LINEHAUL_C_PACKAGES": G.FDEG_LINEHAUL_C_PACKAGES,
-        "FDE_LINEHAUL_A_PACKAGES": G.FDE_LINEHAUL_A_PACKAGES,
-        "FDE_LINEHAUL_B_PACKAGES": G.FDE_LINEHAUL_B_PACKAGES,
-        "FDE_LINEHAUL_C_PACKAGES": G.FDE_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_A_PACKAGES": G.TLMD_LINEHAUL_A_PACKAGES,
-        "TLMD_LINEHAUL_B_PACKAGES": G.TLMD_LINEHAUL_B_PACKAGES,
-        "TLMD_LINEHAUL_C_PACKAGES": G.TLMD_LINEHAUL_C_PACKAGES,
-        "TLMD_LINEHAUL_TFC_PACKAGES": G.TLMD_LINEHAUL_TFC_PACKAGES,
-        # Induction Times
-        "TLMD_AB_INDUCT_TIME": G.TLMD_AB_INDUCT_TIME,
-        "TLMD_C_INDUCT_TIME": G.TLMD_C_INDUCT_TIME,
-        'LINEHAUL_TFC_TIME': G.LINEHAUL_TFC_TIME,
-        # Partition Sort Times
-        "TLMD_PARTITION_1_SORT_TIME": G.TLMD_PARTITION_1_SORT_TIME,
-        "TLMD_PARTITION_2_SORT_TIME": G.TLMD_PARTITION_2_SORT_TIME,
-        "TLMD_PARTITION_3AB_SORT_TIME": G.TLMD_PARTITION_3AB_SORT_TIME,
-        "TLMD_PARTITION_3_SORT_TIME": G.TLMD_PARTITION_3_SORT_TIME,
-        # Sort Times by Carrier
-        "UPSN_SORT_TIME": G.UPSN_SORT_TIME,
-        "USPS_SORT_TIME": G.USPS_SORT_TIME,
-        "FDEG_SORT_TIME": G.FDEG_SORT_TIME,
-        "FDE_SORT_TIME": G.FDE_SORT_TIME,
-        # Pallet Counts
-        "TOTAL_PALLETS_TLMD": G.TOTAL_PALLETS_TLMD,
-        "UPSN_PALLETS": G.UPSN_PALLETS,
-        "USPS_PALLETS": G.USPS_PALLETS,
-        "FDEG_PALLETS": G.FDEG_PALLETS,
-        "FDE_PALLETS": G.FDE_PALLETS,
-        # Passed-Over Pallets
-        "PASSED_OVER_PALLETS_1": G.PASSED_OVER_PALLETS_1,
-        "PASSED_OVER_PALLETS_2": G.PASSED_OVER_PALLETS_2,
-        "PASSED_OVER_PALLETS_3": G.PASSED_OVER_PALLETS_3,
-        "PASSED_OVER_PACKAGES_TLMD": G.PASSED_OVER_PACKAGES,
-    }
-
-    
-        G.TOTAL_PACKAGES = None  # Total packages to be processed
-        G.TOTAL_PACKAGES_TLMD = None  # Total TLMD packages to be processed
-        G.TOTAL_PACKAGES_NC = None  # Total National Carrier packages to be processed
-        G.TLMD_AB_INDUCT_TIME = None
-        G.TLMD_C_INDUCT_TIME = None
-        G.TLMD_STAGED_PACKAGES = None
-        G.TLMD_PARTITION_1_PACKAGES = None
-        G.TLMD_PARTITION_2_PACKAGES = None
-        G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
-        G.TOTAL_PALLETS_TLMD = None
-        G.TLMD_PARTITION_1_SORT_TIME = None
-        G.TLMD_PARTITION_2_SORT_TIME = None 
-        G.TLMD_PARTITION_3AB_SORT_TIME = None
-        G.TLMD_PARTITION_3_SORT_TIME = None
-        G.TLMD_SORTED_PACKAGES = None
-        G.TLMD_PARTITION_1_CART_STAGE_TIME = None
-        G.TLMD_PARTITION_2_CART_STAGE_TIME = None 
-        G.TLMD_PARTITION_3_CART_STAGE_TIME = None
-        G.TLMD_OUTBOUND_PACKAGES = None
-        G.I=1
-        G.J=1
-        G.K=1
-        G.PASSED_OVER_PALLETS_1 = None
-        G.PASSED_OVER_PALLETS_2 = None
-        G.PASSED_OVER_PALLETS_3 = None
-        G.PASSED_OVER_PACKAGES = None
-
-        G.TOTAL_LINEHAUL_A_PACKAGES = None
-        G.TOTAL_LINEHAUL_B_PACKAGES = None
-        G.TOTAL_LINEHAUL_C_PACKAGES = None
-
-        G.USPS_LINEHAUL_A_PACKAGES = None
-        G.USPS_LINEHAUL_B_PACKAGES = None
-        G.USPS_LINEHAUL_C_PACKAGES = None
-
-        G.UPSN_LINEHAUL_A_PACKAGES = None
-        G.UPSN_LINEHAUL_B_PACKAGES = None
-        G.UPSN_LINEHAUL_C_PACKAGES = None
-
-        G.FDEG_LINEHAUL_A_PACKAGES = None
-        G.FDEG_LINEHAUL_B_PACKAGES = None
-        G.FDEG_LINEHAUL_C_PACKAGES = None
-
-        G.FDE_LINEHAUL_A_PACKAGES = None
-        G.FDE_LINEHAUL_B_PACKAGES = None
-        G.FDE_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_A_PACKAGES = None
-        G.TLMD_LINEHAUL_B_PACKAGES = None
-        G.TLMD_LINEHAUL_C_PACKAGES = None
-
-        G.TLMD_LINEHAUL_TFC_PACKAGES=None
-
-        G.LINEHAUL_C_TIME = None
-        G.LINEHAUL_TFC_TIME = None
-
-        G.TOTAL_PACKAGES_UPSN = None
-        G.TOTAL_PACKAGES_USPS = None
-        G.TOTAL_PACKAGES_FDEG = None
-        G.TOTAL_PACKAGES_FDE = None
-        G.UPSN_PALLETS = None
-        G.USPS_PALLETS = None
-        G.FDEG_PALLETS = None
-        G.FDE_PALLETS = None
-        G.UPSN_SORT_TIME = None
-        G.USPS_SORT_TIME = None
-        G.FDEG_SORT_TIME = None
-        G.FDE_SORT_TIME = None
-
-        G.TOTAL_CARTS_TLMD = None
-        G.PASSED_OVER_PACKAGES = None
-
-        del sortation_center    
-        gc.collect()
-
-
     else:
         results_var_40 = None
-        results_var_40_C = None
+  
 
-    return results, results_C, results_var_05, results_var_05_C, results_var_10, results_var_10_C, results_var_15, results_var_15_C, results_var_20, results_var_20_C, results_var_25, results_var_25_C, results_var_30, results_var_30_C, results_var_35, results_var_35_C, results_var_40, results_var_40_C,  df_package_distribution, TFC_arrival_minutes
+    return results, results_var_05,results_var_10, results_var_15, results_var_20,  results_var_25, results_var_30,  results_var_35,  results_var_40, df_package_distribution
 
 
 
