@@ -14,7 +14,7 @@ def simulation_generator(predict):
     predicted_volume = predict
     #print(f'Predicted Total Volume: {predicted_volume}')
 
-    df_package_distribution = dg.generate_demand(predicted_volume, 0.6, '2024-09-01')
+    df_package_distribution = dg.generate_demand(predicted_volume, 0.7, '2024-09-01')
 
     csv_file = 'carrier_breakdown.csv'
     distributions = pd.read_csv(csv_file)
@@ -35,11 +35,7 @@ def simulation_generator(predict):
     total_assigned_packages = sum(carrier_packages.values())
     if total_assigned_packages != total_packages:
         difference = total_packages - total_assigned_packages
-        filtered_carriers = [key for key in carrier_packages.keys() if key != "FDE"]
-        bonus_carrier = random.choice(filtered_carriers)
-        while bonus_carrier == 'FDE':
-            bonus_carrier = random.choice(list(carrier_packages.keys()))
-        carrier_packages[random.choice(list(carrier_packages.keys()))] += difference
+        carrier_packages["TLMD"] += difference
 
     df_carrier_breakdown = pd.DataFrame(list(carrier_packages.items()), columns=['Organization', 'Packages'])
 
