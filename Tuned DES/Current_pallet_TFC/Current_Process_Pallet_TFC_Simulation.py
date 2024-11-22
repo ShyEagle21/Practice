@@ -469,8 +469,6 @@ class Sortation_Center_Original:
 ####################################
 
     def unload_truck(self, pallet):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
         
         with self.current_resource['tm_pit_unload'].request() as req:
             yield req
@@ -498,7 +496,7 @@ class Sortation_Center_Original:
     def move_to_TFC_induct_staging(self, pallet):
         while not self.TLMD_AB_pre_flag:
             yield self.env.timeout(1)
-        with self.current_resource['tm_pit_induct'].request(priority=1) as req: 
+        with self.current_resource['tm_pit_induct'].request(priority=0) as req: 
             yield req
             yield self.queues['queue_induct_staging_TFC'].get()
             if self.var_status == True:
@@ -522,7 +520,7 @@ class Sortation_Center_Original:
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
 
-        with self.current_resource['tm_pit_induct'].request(priority=1) as req: 
+        with self.current_resource['tm_pit_induct'].request(priority=0) as req: 
             yield req
             yield self.queues['queue_inbound_staging'].get()
             if self.var_status == True:
@@ -557,9 +555,13 @@ class Sortation_Center_Original:
             if self.pause_event:
                     while self.pause_event:
                         yield self.env.timeout(1) # Wait for the pause event to be triggered
-            package.current_queue = 'queue_splitter'
             #print(f'Package {package.tracking_number}, {package.scac} inducted at {self.env.now}')
-            yield self.queues['queue_splitter'].put(package)
+            if self.TFC_flag and self.TLMD_AB_pre_flag:
+                package.current_queue = 'queue_tlmd_buffer_sort'
+                yield self.queues['queue_tlmd_buffer_sort'].put(package)
+            else:
+                package.current_queue = 'queue_splitter'
+                yield self.queues['queue_splitter'].put(package)
             pallet.current_packages -= 1  # Decrement the counter
             if pallet.current_packages == 0:
                 # Remove the pallet from queue_induct_staging_pallets
