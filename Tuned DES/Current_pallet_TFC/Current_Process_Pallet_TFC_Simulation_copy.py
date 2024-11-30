@@ -7,7 +7,7 @@
 
 import math
 import numpy as np
-import sim_generator_LH_C_SEP_tuned as sg_c
+import sim_generator_TFC_Fluid as sg_c
 import matplotlib.pyplot as plt
 import pandas as pd
 import simpy
@@ -146,10 +146,11 @@ class Package:
         self.current_queue = None
 
 class Pallet:
-    def __init__(self, env, pallet_id, packages, pkg_received_utc_ts):
+    def __init__(self, env, pallet_id, LH, packages, pkg_received_utc_ts):
         self.env = env
         self.pkg_received_utc_ts = pkg_received_utc_ts
         self.pallet_id = pallet_id
+        self.LH = LH
         self.packages = [Package(pkg[0], pallet_id, pkg[1]) for pkg in packages]
         self.current_queue = None
         self.current_packages = len(packages)  # Track remaining packages
@@ -399,7 +400,7 @@ class Sortation_Center_Original:
         self.queues = {
             'queue_inbound_truck': simpy.Store(self.env),
             'queue_inbound_staging': simpy.Store(self.env, capacity=200),
-            'queue_truck_TFC_packages': simpy.Store(self.env),
+            'queue_induct_staging_TFC': simpy.Store(self.env),
             'queue_induct_staging_pallets': simpy.Store(self.env, capacity = 8),
             'queue_induct_staging_packages': simpy.Store(self.env),
             'queue_splitter': simpy.Store(self.env, capacity=1),
@@ -450,6 +451,7 @@ class Sortation_Center_Original:
             pallet = Pallet(
                 self.env,
                 row['Pallet'],
+                row['linehaul'],
                 row['packages'],
                 row['earliest_arrival']
             )
@@ -467,72 +469,50 @@ class Sortation_Center_Original:
 ####################################
 
     def unload_truck(self, pallet):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
-
-        if self.TFC_flag and self.TLMD_AB_pre_flag:
-            self.env.process(self.fluid_unload_to_packages(pallet))
         
-        else:
-            with self.current_resource['tm_pit_unload'].request() as req:
-                yield req
-                yield self.queues['queue_inbound_truck'].get()
-                if self.var_status == True:
-                    process_time = np.random.normal(G.UNLOADING_RATE, G.UNLOADING_RATE*self.var_mag)
-                elif self.var_status == False:
-                    process_time = G.UNLOADING_RATE
-                yield self.env.timeout(max(0,process_time))  # Unloading time
-                if self.pause_event:
-                    while self.pause_event:
-                        yield self.env.timeout(1) # Wait for the pause event to be triggered
+        with self.current_resource['tm_pit_unload'].request() as req:
+            yield req
+            yield self.queues['queue_inbound_truck'].get()
+            if self.var_status == True:
+                process_time = np.random.normal(G.UNLOADING_RATE, G.UNLOADING_RATE*self.var_mag)
+            elif self.var_status == False:
+                process_time = G.UNLOADING_RATE
+            yield self.env.timeout(max(0,process_time))  # Unloading time
+            if self.pause_event:
+                while self.pause_event:
+                    yield self.env.timeout(1) # Wait for the pause event to be triggered
+
+            if pallet.LH == 'TFC':
+                pallet.current_queue = 'queue_induct_staging_TFC'
+                yield self.queues['queue_induct_staging_TFC'].put(pallet)
+                self.env.process(self.move_to_TFC_induct_staging(pallet))
+            else:
                 pallet.current_queue = 'queue_inbound_staging'
-                #print(f'Pallet {pallet.pallet_id} unloaded at {self.env.now}')
                 yield self.queues['queue_inbound_staging'].put(pallet)
                 self.env.process(self.move_to_induct_staging(pallet))
 
-        
-    def fluid_unload_to_packages(self, pallet):
-        for package in pallet.packages:
-            package.current_queue = 'queue_truck_TFC_packages'
-            yield self.queues['queue_truck_TFC_packages'].put(package)
-            self.env.process(self.fluid_unload(package, pallet))
-
-    def fluid_unload(self, package, pallet):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
+    def move_to_TFC_induct_staging(self, pallet):
+        while not self.TLMD_AB_pre_flag:
             yield self.env.timeout(1)
-        with self.current_resource['tm_TFC_unload'].request() as req:
+        with self.current_resource['tm_pit_induct'].request(priority=0) as req: 
             yield req
-            yield self.queues['queue_truck_TFC_packages'].get()
+            yield self.queues['queue_induct_staging_TFC'].get()
             if self.var_status == True:
-                process_time = np.random.normal(G.FLUID_UNLOAD_RATE, G.FLUID_UNLOAD_RATE * self.var_mag)
+                process_time = np.random.normal(G.INDUCT_STAGE_RATE, G.INDUCT_STAGE_RATE * self.var_mag)
             elif self.var_status == False:
-                process_time = G.FLUID_UNLOAD_RATE
-            yield self.env.timeout(max(0,process_time))
+                process_time = G.INDUCT_STAGE_RATE
+            yield self.env.timeout(max(0,process_time))  # Unloading time
             if self.pause_event:
-                    while self.pause_event:
-                        yield self.env.timeout(1) # Wait for the pause event to be triggered
-            package.current_queue = 'queue'
-            yield self.queues['queue_tlmd_buffer_sort'].put(package)
-            pallet.current_packages -= 1
-            self.env.process(self.TLMD_buffer_TFC_sort(package))
+                while self.pause_event:
+                    yield self.env.timeout(1) # Wait for the pause event to be triggered
+            pallet.current_queue = 'queue_induct_staging_pallets'
+            yield self.queues['queue_induct_staging_pallets'].put(pallet)
+            #print(f'Pallet {pallet.pallet_id} staged for induction at {self.env.now}')
+            for package in pallet.packages:
+                package.current_queue = 'queue_induct_staging_packages'
+                yield self.queues['queue_induct_staging_packages'].put(package)
+                self.env.process(self.induct_package(package, pallet))
 
-    def TLMD_buffer_TFC_sort(self, package):
-        while self.TFC_flag and not self.TLMD_AB_pre_flag:
-            yield self.env.timeout(1)
-        with self.current_resource['tm_TFC_sort'].request() as req:
-            yield req
-            yield self.queues['queue_tlmd_buffer_sort'].get()
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_BUFFER_SORT_RATE, G.TLMD_BUFFER_SORT_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_BUFFER_SORT_RATE
-            yield self.env.timeout(max(0,process_time))
-            if self.pause_event:
-                    while self.pause_event:
-                        yield self.env.timeout(1) # Wait for the pause event to be triggered
-            #print(f'Package {package.tracking_number} sorted to TLMD Buffer at {self.env.now}')
-            yield self.queues['queue_tlmd_pallet'].put(package)
-            self.env.process(self.check_all_packages_staged())
 
     def move_to_induct_staging(self, pallet):
         while self.LHC_flag and not self.partition_2_flag:
@@ -547,8 +527,8 @@ class Sortation_Center_Original:
                 process_time = G.INDUCT_STAGE_RATE
             yield self.env.timeout(max(0,process_time))  # Unloading time
             if self.pause_event:
-                    while self.pause_event:
-                        yield self.env.timeout(1) # Wait for the pause event to be triggered
+                while self.pause_event:
+                    yield self.env.timeout(1) # Wait for the pause event to be triggered
             pallet.current_queue = 'queue_induct_staging_pallets'
             yield self.queues['queue_induct_staging_pallets'].put(pallet)
             #print(f'Pallet {pallet.pallet_id} staged for induction at {self.env.now}')
@@ -573,14 +553,23 @@ class Sortation_Center_Original:
             if self.pause_event:
                     while self.pause_event:
                         yield self.env.timeout(1) # Wait for the pause event to be triggered
-            package.current_queue = 'queue_splitter'
             #print(f'Package {package.tracking_number}, {package.scac} inducted at {self.env.now}')
-            yield self.queues['queue_splitter'].put(package)
+            #print(f'TFC_Flag: {self.TFC_flag}')
+            #print(f'LH_pre_AB_Flag: {self.TLMD_AB_pre_flag}')
+            if self.TFC_flag and self.TLMD_AB_pre_flag:
+                package.current_queue = 'queue_tlmd_buffer_sort'
+                yield self.queues['queue_tlmd_buffer_sort'].put(package)
+            else:
+                package.current_queue = 'queue_splitter'
+                yield self.queues['queue_splitter'].put(package)
             pallet.current_packages -= 1  # Decrement the counter
             if pallet.current_packages == 0:
                 # Remove the pallet from queue_induct_staging_pallets
                 self.remove_pallet_from_queue(pallet)
-            self.env.process(self.split_package(package))
+            if self.TFC_flag and self.TLMD_AB_pre_flag:
+                self.env.process(self.tlmd_buffer_sort(pallet))
+            else:
+                self.env.process(self.split_package(package))
         
         
     def remove_pallet_from_queue(self, pallet):
@@ -656,8 +645,6 @@ class Sortation_Center_Original:
                 else:
                     yield self.queues["queue_FDE_fluid"].put(package)
                     self.env.process(self.national_carrier_fluid_split_FDE(package))
-
-    
         
     def check_all_UPSN_sorted(self):
         while self.LHC_flag and not self.partition_2_flag:
@@ -1072,18 +1059,21 @@ class Sortation_Center_Original:
 
     def TLMD_pallet_build(self):
     # Calculate the number of packages in each partition
-        partition_1_packages = round(G.PARTITION_1_RATIO * G.TOTAL_PACKAGES_TLMD)
-        partition_2_packages = round(G.PARTITION_2_RATIO * G.TOTAL_PACKAGES_TLMD)
-        partition_3_packages = round(G.PARTITION_3_RATIO * G.TOTAL_PACKAGES_TLMD)
-
-        G.TLMD_PARTITION_1_PACKAGES = partition_1_packages
-        G.TLMD_PARTITION_2_PACKAGES = partition_2_packages
-        G.TLMD_PARTITION_3_PACKAGES = partition_3_packages
-
+        partition_1_packages = G.TLMD_PARTITION_1_PACKAGES
+        partition_2_packages = G.TLMD_PARTITION_2_PACKAGES
+        partition_3_packages = G.TLMD_PARTITION_3_PACKAGES
+        totaled = partition_1_packages + partition_2_packages + partition_3_packages
         #print(f'Partition 1: {partition_1_packages} packages')
         #print(f'Partition 2: {partition_2_packages} packages')
         #print(f'Partition 3: {partition_3_packages} packages')
-        #print(f'Total packages: {partition_1_packages + partition_2_packages + partition_3_packages}')
+        #print(f'Total packages: {G.TOTAL_PACKAGES_TLMD}')
+        if totaled != G.TOTAL_PACKAGES_TLMD:
+            if totaled > G.TOTAL_PACKAGES_TLMD:
+                delta = totaled- G.TOTAL_PACKAGES_TLMD
+                G.TLMD_PARTITION_3_PACKAGES-=delta
+            elif totaled < G.TOTAL_PACKAGES_TLMD:
+                delta = G.TOTAL_PACKAGES_TLMD-totaled
+                G.TLMD_PARTITION_3_PACKAGES+=delta
 #
         G.TLMD_PARTITION_3AB_PACKAGES = G.TLMD_LINEHAUL_A_PACKAGES + G.TLMD_LINEHAUL_B_PACKAGES +G.TLMD_LINEHAUL_TFC_PACKAGES - G.TLMD_PARTITION_1_PACKAGES - G.TLMD_PARTITION_2_PACKAGES
         #print(f'partition 3AB pakages: {G.TLMD_PARTITION_3AB_PACKAGES}')
@@ -1100,6 +1090,7 @@ class Sortation_Center_Original:
         partition_2_pallets = math.ceil(partition_2_packages / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
         partition_3_pallets = math.ceil(partition_3_packages / G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
         G.TOTAL_PALLETS_TLMD = partition_1_pallets + partition_2_pallets + partition_3_pallets
+        
         #print(f'total pallets: {G.TOTAL_PALLETS_TLMD}')
         #print(f'Partition 1: {partition_1_pallets} pallets')
         #print(f'Partition 2: {partition_2_pallets} pallets')
@@ -1151,9 +1142,10 @@ class Sortation_Center_Original:
     def feed_TLMD_induct_staging(self):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
+
         with self.current_resource['tm_TLMD_induct_stage'].request(priority=1) as req:
             yield req
-            while len(self.queues['queue_tlmd_induct_staging_pallets'].items) >= self.queues['queue_tlmd_induct_staging_pallets'].capacity:
+            while len(self.queues['queue_tlmd_induct_staging_pallets'].items) >= (self.queues['queue_tlmd_induct_staging_pallets'].capacity -2):
                 yield self.env.timeout(1)
             if len(self.queues['queue_tlmd_1_staged_pallet'].items) > 0:
                 pallet = yield self.queues['queue_tlmd_1_staged_pallet'].get()
@@ -1163,9 +1155,8 @@ class Sortation_Center_Original:
                 #print(f'grabbed pallet {pallet.pallet_id} from queue_tlmd_2_staged_pallet at {self.env.now}')
             elif len(self.queues['queue_tlmd_3_staged_pallet'].items) > 0:
                 pallet = yield self.queues['queue_tlmd_3_staged_pallet'].get()
-                #print(f'grabbed pallet {pallet.pallet_id} from queue_tlmd_3_staged_pallet at {self.env.now}')
             else:
-                #print('No pallets left in any queue')
+                print('ERROR: No pallets left in any queue')
                 return
             if self.var_status == True:
                 process_time = np.random.normal(G.TLMD_INDUCT_STAGE_RATE, G.TLMD_INDUCT_STAGE_RATE * self.var_mag)
@@ -1324,9 +1315,7 @@ class Sortation_Center_Original:
     def TLMD_cart_build(self):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
-        partition_1_packages = G.TLMD_PARTITION_1_PACKAGES
-        partition_2_packages = G.TLMD_PARTITION_2_PACKAGES
-        partition_3_packages = G.TLMD_PARTITION_3_PACKAGES
+
     
         
         # print(f'Partition 1: {partition_1_packages} packages')
@@ -1335,16 +1324,16 @@ class Sortation_Center_Original:
         # print(f'Total packages: {partition_1_packages + partition_2_packages + partition_3_packages}')
         
         # Calculate the number of pallets needed for each partition
-        partition_1_carts = math.ceil(partition_1_packages / G.TLMD_CART_MAX_PACKAGES)
-        partition_2_carts = math.ceil(partition_2_packages / G.TLMD_CART_MAX_PACKAGES)
-        partition_3_carts = math.ceil(partition_3_packages / G.TLMD_CART_MAX_PACKAGES)
+        #partition_1_carts = math.ceil(partition_1_packages / G.TLMD_CART_MAX_PACKAGES)
+        #partition_2_carts = math.ceil(partition_2_packages / G.TLMD_CART_MAX_PACKAGES)
+        #partition_3_carts = math.ceil(partition_3_packages / G.TLMD_CART_MAX_PACKAGES)
 
         # print(f'Partition 1: {partition_1_carts} carts')
         # print(f'Partition 2: {partition_2_carts} carts')
         # print(f'Partition 3: {partition_3_carts} carts')
         # print(F'total carts: {partition_1_carts + partition_2_carts + partition_3_carts}')
 
-        G.TOTAL_CARTS_TLMD = partition_1_carts + partition_2_carts + partition_3_carts
+        #G.TOTAL_CARTS_TLMD = partition_1_carts + partition_2_carts + partition_3_carts
 
     def run_simulation(self, until):
         return self.env.timeout(until)
@@ -1415,6 +1404,14 @@ def setup_simulation(day_pallets,
     linehaul_TFC_df = filter_packages_by_linehaul(day_pallets, 'TFC')
 
     total_packages_TLMD = total_packages - total_packages_NC
+
+    partition_1_packages = round(G.PARTITION_1_RATIO * total_packages_TLMD)
+    partition_2_packages = round(G.PARTITION_2_RATIO * total_packages_TLMD)
+    partition_3_packages = round(G.PARTITION_3_RATIO * total_packages_TLMD)
+
+    G.TLMD_PARTITION_1_PACKAGES = partition_1_packages 
+    G.TLMD_PARTITION_2_PACKAGES = partition_2_packages
+    G.TLMD_PARTITION_3_PACKAGES = partition_3_packages
 
     # print(f'Total Inbound Packages: {total_packages}')
     # print(f'Total Inbound TLMD Packages: {total_packages_TLMD}')
@@ -1581,7 +1578,7 @@ def Simulation_Machine(predict,
                         var_40
                         ):
     
-    df_pallets, df_package_distribution, TFC_arrival_minutes = sg_c.simulation_generator(predict)
+    df_pallets, df_package_distribution, TFC_arrival_minutes = sg_c.simulation_generator(predict, [G.PARTITION_1_RATIO, G.PARTITION_2_RATIO, G.PARTITION_3_RATIO])
 
     pallet_info = df_pallets.groupby('Pallet').agg(
         num_packages=('package_tracking_number', 'count'),
@@ -1619,8 +1616,7 @@ def Simulation_Machine(predict,
     var_status = False
     process_variance = 0
     # Setup inbound induct simulation
-    env, sortation_center = setup_simulation(
-                                             pallet_info, 
+    env, sortation_center = setup_simulation(pallet_info, 
                                              night_tm_pit_unload, 
                                              night_tm_pit_induct, 
                                              night_tm_nonpit_split, 
@@ -1656,7 +1652,7 @@ def Simulation_Machine(predict,
     #print("End Process")
     #print(len(G.TLMD_STAGED_PACKAGES))
 
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages
