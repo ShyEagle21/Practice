@@ -1656,7 +1656,7 @@ def Simulation_Machine(predict,
     #print("End Process")
     #print(len(G.TLMD_STAGED_PACKAGES))
 
-    #plot_metrics(sortation_center.metrics)
+    plot_metrics(sortation_center.metrics)
 
     results = {
     # Total Packages
