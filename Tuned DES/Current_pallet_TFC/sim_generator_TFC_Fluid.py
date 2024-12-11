@@ -37,9 +37,13 @@ def simulation_generator(predict, partition_ratios):
     df_carrier_breakdown = pd.DataFrame(list(carrier_packages.items()), columns=['Organization', 'Packages'])
     #take the value from the TFC and add it to the TLMD
     total_tlmd_volume = int(df_carrier_breakdown.loc[df_carrier_breakdown['Organization'] == 'TLMD', 'Packages']) + TFC_vol
+    print(f'Total TLMD volume: {total_tlmd_volume}')
+    print(f'TFC volume: {TFC_vol}')
+    print(f'linehaul tlmd volume: {total_tlmd_volume - TFC_vol}')
 
     def assign_packages_to_pallets(trucks_df, packages_df):
         result = []
+        tlmd_count = 0  # Counter for 'TLMD' packages in trucks 12-15
         
         # Create a list of all packages
         all_packages = []
@@ -74,6 +78,10 @@ def simulation_generator(predict, partition_ratios):
                 if tlmd_pallet + NC_pallet > num_pallets:
                     num_pallets = tlmd_pallet + NC_pallet
 
+                # Update the TLMD counter for trucks 12-15
+                if 12 <= truck_number <= 15:
+                    tlmd_count += count_tlmd
+
             truck_pallets = [[] for _ in range(num_pallets)]
             
             # Randomly assign packages to pallets on the current truck
@@ -101,20 +109,21 @@ def simulation_generator(predict, partition_ratios):
                 'Truck Number': truck_number,
                 'pallets': pallet_counts
             })
-        
-        return result
+        return result, tlmd_count
 
-    assigned_packages = assign_packages_to_pallets(df_pallet_formation, df_carrier_breakdown)
+    assigned_packages, TLMD_LHC = assign_packages_to_pallets(df_pallet_formation, df_carrier_breakdown)
     LH_C_TLMD = 0
     for truck in assigned_packages:
         truck_number = truck['Truck Number']
         if 12 <= truck_number <= 15:
             for pallet in truck['pallets']:
                 LH_C_TLMD += pallet['TLMD']
+
     # Initialize lists to store data for DataFrame
     truck_data = assigned_packages
     arrival_times_df = pd.DataFrame(df_package_distribution[['Truck Number', 'arrival_actualization']])
     # Initialize lists to store data for DataFrame
+    # Initialize lists
     pallet_numbers = []
     package_numbers = []
     arrival_times_list = []
@@ -122,42 +131,46 @@ def simulation_generator(predict, partition_ratios):
     linehaul_list = []
     partition_list = []
 
-    # Initialize package counter
+    # Initialize counters
     package_counter = 1
-
-    # Initialize pallet counter
     pallet_counter = 1
 
+    # Calculate partitions
     partition_1 = round(partition_ratios[0] * total_tlmd_volume)
     partition_2 = round(partition_ratios[1] * total_tlmd_volume)
     partition_3 = round(partition_ratios[2] * total_tlmd_volume)
+    partition_3AB = partition_3 - TLMD_LHC
+    Partition_3C = TLMD_LHC
 
-
+    # Adjust partitions if they don't sum up correctly
     if partition_1 + partition_2 + partition_3 != total_tlmd_volume:
         partition_3 += total_tlmd_volume - partition_1 - partition_2
 
+    print(f'partition_1: {partition_1}, partition_2: {partition_2}, partition_3: {partition_3}')
+    print(f'Partition 3AB: {partition_3AB}, Partition 3C: {Partition_3C}')
+
     # Calculate partition limits
-    total_tlmd_volume = carrier_packages.get('TLMD', 0)
     partition_limits = {
         '1': partition_1,
         '2': partition_2,
-        '3': partition_3,
+        '3AB': partition_3 - TLMD_LHC
     }
-    partition_counts = {'1': 0, '2': 0,'3': 0}
-    
+    partition_counts = {'1': 0, '2': 0, '3AB': 0, '3C': 0}
+
+    # Create and shuffle partitions list
     partitions = (
         ['1'] * partition_limits['1'] +
         ['2'] * partition_limits['2'] +
-        ['3'] * partition_limits['3']   
-        )
-
-    np.random.shuffle(partitions)  # Shuffle the partitions list
+        ['3AB'] * partition_limits['3AB']
+    )
+    np.random.shuffle(partitions)
 
     # Iterate over trucks and pallets to generate DataFrame data
     for truck in truck_data:
         truck_number = truck['Truck Number']
         arrival_time = float(arrival_times_df[arrival_times_df['Truck Number'] == truck_number]['arrival_actualization'].values)
         arrival_time = max(arrival_time, 0.0)
+        
         # Determine linehaul value based on truck number
         if 1 <= truck_number <= 6:
             linehaul = 'A'
@@ -166,13 +179,14 @@ def simulation_generator(predict, partition_ratios):
         elif 12 <= truck_number <= 15:
             linehaul = 'C'
         else:
-            linehaul = 'Unknown'  # Handle unexpected truck numbers
+            linehaul = 'Unknown'
 
         for pallet in truck['pallets']:
             scac_values = []
             for org, num_packages in pallet.items():
                 scac_values.extend([org] * num_packages)
-            np.random.shuffle(scac_values)  # Shuffle SCAC values within the pallet
+            np.random.shuffle(scac_values)
+            
             for scac in scac_values:
                 pallet_numbers.append(pallet_counter)
                 package_numbers.append(f"PKG{package_counter:06d}")
@@ -185,12 +199,12 @@ def simulation_generator(predict, partition_ratios):
                     partition_list.append(scac)
                 elif scac == 'TLMD':
                     if linehaul in ['A', 'B']:
-                        partition = partitions.pop(0)  # Get a random partition from the shuffled list
+                        partition = partitions.pop(0)
                         partition_list.append(partition)
                         partition_counts[partition] += 1
                     elif linehaul == 'C':
-                        partition_list.append('3')
-                        partition_counts['3'] += 1
+                        partition_list.append('3C')
+                        partition_counts['3C'] += 1
                     else:
                         partition_list.append('Unknown')
                 package_counter += 1
@@ -213,12 +227,11 @@ def simulation_generator(predict, partition_ratios):
         'scac': ['TLMD'] * TFC_vol,
         'Pallet': [(pallet_counter + i % TFC_pallets) for i in range(TFC_vol)],
         'Linehaul': 'TFC',
-        'Partition': [partitions.pop(0) for _ in range(TFC_vol)]  # Assuming TFC packages are always in partition 3
+        'Partition': [partitions.pop(0) for _ in range(TFC_vol)]
     }
-    # Create DataFrame for new packages
     df_new_packages = pd.DataFrame(new_packages)
 
     # Append new packages to the existing DataFrame
     df = pd.concat([df, df_new_packages], ignore_index=True)
 
-    return df, df_package_distribution, TFC_arrival_minutes
+    return df, df_package_distribution, TFC_arrival_minutes, partition_1, partition_2, partition_3AB, Partition_3C
