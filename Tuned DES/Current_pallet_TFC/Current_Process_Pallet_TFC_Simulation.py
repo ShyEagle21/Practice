@@ -448,9 +448,13 @@ class Sortation_Center_Original:
             "queue_USPS_fluid": simpy.Store(self.env, capacity=10),
             "queue_UPSN_fluid": simpy.Store(self.env, capacity=10),
             'queue_tlmd_partition_1_packages' : simpy.Store(self.env),
+            'queue_tlmd_partition_1_packages_f' : simpy.Store(self.env),
             'queue_tlmd_partition_2_packages' : simpy.Store(self.env),
+            'queue_tlmd_partition_2_packages_f' : simpy.Store(self.env),
             'queue_tlmd_partition_3AB_packages' : simpy.Store(self.env),
+            'queue_tlmd_partition_3AB_packages_f' : simpy.Store(self.env),
             'queue_tlmd_partition_3C_packages' : simpy.Store(self.env),
+            'queue_tlmd_partition_3C_packages_f' : simpy.Store(self.env),
             'queue_tlmd_buffer_pallet_1' : simpy.Store(self.env),
             'queue_tlmd_buffer_pallet_2' : simpy.Store(self.env),
             'queue_tlmd_buffer_pallet_3AB' : simpy.Store(self.env),
@@ -1065,33 +1069,50 @@ class Sortation_Center_Original:
             if self.pause_event:
                 while self.pause_event:
                     yield self.env.timeout(1) # Wait for the pause event to be triggered
-            #print(f'Package {package.tracking_number} sorted to TLMD Buffer at {self.env.now}')
+            print(f'Package {package.tracking_number} of partition {package.partition} sorted to TLMD Buffer at {self.env.now}')
 
             if package.partition == '1':
                 self.TLMD_counter_1 +=1
-                #print(f'partition 1 presorted: {self.TLMD_counter_1}')
-                self.queues['queue_tlmd_partition_1_packages'].put(package)
-                self.env.process(self.check_pallet_1())
+                print(f'partition 1 presorted: {self.TLMD_counter_1}')
+                if self.TLMD_counter_1 <= ((G.TLMD_PARTITION_1_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                    self.queues['queue_tlmd_partition_1_packages'].put(package)
+                    self.env.process(self.check_pallet_1())
+                else:
+                    self.queues['queue_tlmd_partition_1_packages_f'].put(package)
+                    self.env.process(self.check_pallet_1f())
             elif package.partition == '2':
                 self.TLMD_counter_2 +=1
-                #print(f'partition 2 presorted: {self.TLMD_counter_2}')
-                self.queues['queue_tlmd_partition_2_packages'].put(package)
-                self.env.process(self.check_pallet_2())
+                print(f'partition 2 presorted: {self.TLMD_counter_2}')
+                if self.TLMD_counter_2 <= ((G.TLMD_PARTITION_2_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                    self.queues['queue_tlmd_partition_2_packages'].put(package)
+                    self.env.process(self.check_pallet_2())
+                else:
+                    self.queues['queue_tlmd_partition_2_packages_f'].put(package)
+                    self.env.process(self.check_pallet_2f())
             elif package.partition == '3AB':
                 self.TLMD_counter_3AB +=1
-                #print(f'partition 3AB presorted: {self.TLMD_counter_3AB}')
-                self.queues['queue_tlmd_partition_3AB_packages'].put(package)
-                self.env.process(self.check_pallet_3AB())
+                print(f'partition 3AB presorted: {self.TLMD_counter_3AB}')
+                if self.TLMD_counter_3AB <= ((G.TLMD_PARTITION_3AB_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                    self.queues['queue_tlmd_partition_3AB_packages'].put(package)
+                    self.env.process(self.check_pallet_3AB())
+                else:
+                    self.queues['queue_tlmd_partition_3AB_packages_f'].put(package)
+                    self.env.process(self.check_pallet_3ABf())
             elif package.partition == '3C':
                 self.TLMD_counter_3C +=1
-                #print(f'partition 3C presorted: {self.TLMD_counter_3C}')
-                self.queues['queue_tlmd_partition_3C_packages'].put(package)
-                self.env.process(self.check_pallet_3C())
+                print(f'partition 3C presorted: {self.TLMD_counter_3C}')
+                if self.TLMD_counter_3C <= ((G.TLMD_PARTITION_3C_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                    self.queues['queue_tlmd_partition_3C_packages'].put(package)
+                    self.env.process(self.check_pallet_3C())
+                else:
+                    self.queues['queue_tlmd_partition_3C_packages_f'].put(package)
+                    self.env.process(self.check_pallet_3Cf())
 
         if self.TLMD_counter_1 + self.TLMD_counter_2 + self.TLMD_counter_3AB == G.TLMD_LINEHAUL_A_PACKAGES + G.TLMD_LINEHAUL_B_PACKAGES:
                 self.TLMD_AB_pre_flag = True
         if self.TLMD_counter_3C == G.TLMD_LINEHAUL_C_PACKAGES:
                 self.TLMD_C_pre_flag = True
+
  ######################################################
 
 
@@ -1099,41 +1120,219 @@ class Sortation_Center_Original:
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
 
-        # Check if it's the last pallet
-        if self.TLMD_counter_1 >= ((G.TLMD_PARTITION_1_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
-            packages_for_this_pallet = G.TLMD_PARTITION_1_PACKAGES - ((G.TLMD_PARTITION_1_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+        if len(self.queues['queue_tlmd_partition_1_packages'].items) < G.TLMD_PARTITION_PALLET_MAX_PACKAGES:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_1())
+        else:
+            pallet_packages_1 = []
+            for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                pkg = yield self.queues['queue_tlmd_partition_1_packages'].get()
+                pallet_packages_1.append(pkg)
+                yield self.env.timeout(0)
+            pallet = TLMD_Pallet(self.env, f'TLMD_pallet_1_{G.I}', pallet_packages_1, self.env.now)
+            self.pallet_counter_1 += 1
+            G.I += 1
+            print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_1)} packages at {self.env.now}')
+            yield self.queues['queue_tlmd_buffer_pallet_1'].put(pallet)
+            self.env.process(self.stage_pallets())
 
-            if len(self.queues['queue_tlmd_partition_1_packages'].items) < packages_for_this_pallet:
+    def check_pallet_1f(self):
+        while self.LHC_flag and not self.partition_1_flag:
+            yield self.env.timeout(1)
+
+        packages_for_this_pallet_1f = G.TLMD_PARTITION_1_PACKAGES - ((G.TLMD_PARTITION_1_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+
+        if len(self.queues['queue_tlmd_partition_1_packages_f'].items) < packages_for_this_pallet_1f:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_1f())
+        else:
+            if not self.partition_1_pallet_flag:
+                self.partition_1_pallet_flag = True
+                pallet_packages_1f = []
+                for _ in range(packages_for_this_pallet_1f):
+                    pkg = yield self.queues['queue_tlmd_partition_1_packages_f'].get()
+                    pallet_packages_1f.append(pkg)
+                    yield self.env.timeout(0)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_1_{G.I}', pallet_packages_1f, self.env.now)
+                self.pallet_counter_1 += 1
+                G.I += 1
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_1f)} packages at {self.env.now}')
+                yield self.queues['queue_tlmd_buffer_pallet_1'].put(pallet)
+                self.env.process(self.stage_pallets())
+
+    def check_pallet_2(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+
+        if len(self.queues['queue_tlmd_partition_2_packages'].items) < G.TLMD_PARTITION_PALLET_MAX_PACKAGES:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_2())
+        else:
+            pallet_packages_2 = []
+            for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                pkg = yield self.queues['queue_tlmd_partition_2_packages'].get()
+                pallet_packages_2.append(pkg)
+                yield self.env.timeout(0)
+            pallet = TLMD_Pallet(self.env, f'TLMD_pallet_2_{G.L}', pallet_packages_2, self.env.now)
+            self.pallet_counter_2 += 1
+            G.L += 1
+            print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_2)} packages at {self.env.now}')
+            yield self.queues['queue_tlmd_buffer_pallet_2'].put(pallet)
+            self.env.process(self.stage_pallets())
+
+    def check_pallet_2f(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+        packages_for_this_pallet_2f = G.TLMD_PARTITION_2_PACKAGES - ((G.TLMD_PARTITION_2_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+
+        if len(self.queues['queue_tlmd_partition_2_packages_f'].items) < packages_for_this_pallet_2f:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_2f())
+        else:
+            if not self.partition_2_pallet_flag:
+                self.partition_2_pallet_flag = True
+                pallet_packages_2f = []
+                for _ in range(packages_for_this_pallet_2f):
+                    pkg = yield self.queues['queue_tlmd_partition_2_packages_f'].get()
+                    pallet_packages_2f.append(pkg)
+                    yield self.env.timeout(0)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_2_{G.L}', pallet_packages_2f, self.env.now)
+                self.pallet_counter_2 += 1
+                G.L += 1
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_2f)} packages at {self.env.now}')
+                yield self.queues['queue_tlmd_buffer_pallet_2'].put(pallet)
+                self.env.process(self.stage_pallets())
+        
+
+    ###########################################################
+    def check_pallet_3AB(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+
+        if len(self.queues['queue_tlmd_partition_3AB_packages'].items) < G.TLMD_PARTITION_PALLET_MAX_PACKAGES:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_3AB())
+        else:
+            pallet_packages_3AB = []
+            for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                pkg = yield self.queues['queue_tlmd_partition_3AB_packages'].get()
+                pallet_packages_3AB.append(pkg)
+                yield self.env.timeout(0)
+            pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages_3AB, self.env.now)
+            self.pallet_counter_3AB += 1
+            G.M += 1
+            print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_3AB)} packages at {self.env.now}')
+            yield self.queues['queue_tlmd_buffer_pallet_3AB'].put(pallet)
+            self.env.process(self.stage_pallets())
+
+    def check_pallet_3ABf(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+        packages_for_this_pallet_3ABf = G.TLMD_PARTITION_3AB_PACKAGES - ((G.TLMD_PARTITION_3AB_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+
+        if len(self.queues['queue_tlmd_partition_3AB_packages_f'].items) < packages_for_this_pallet_3ABf:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_3ABf())
+        else:
+            if not self.partition_3AB_pallet_flag:
+                self.partition_3AB_pallet_flag = True
+                pallet_packages_3ABf = []
+                for _ in range(packages_for_this_pallet_3ABf):
+                    pkg = yield self.queues['queue_tlmd_partition_3AB_packages_f'].get()
+                    pallet_packages_3ABf.append(pkg)
+                    yield self.env.timeout(0)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages_3ABf, self.env.now)
+                self.pallet_counter_3AB += 1
+                G.M += 1
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_3ABf)} packages at {self.env.now}')
+                yield self.queues['queue_tlmd_buffer_pallet_3AB'].put(pallet)
+                self.env.process(self.stage_pallets())
+
+###############################################################
+    def check_pallet_3C(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+
+        if len(self.queues['queue_tlmd_partition_3C_packages'].items) < G.TLMD_PARTITION_PALLET_MAX_PACKAGES:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_3C())
+        else:
+            pallet_packages_3C = []
+            for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
+                pkg = yield self.queues['queue_tlmd_partition_3C_packages'].get()
+                pallet_packages_3C.append(pkg)
+                yield self.env.timeout(0)
+            pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages_3C, self.env.now)
+            self.pallet_counter_3C += 1
+            G.M += 1
+            print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_3C)} packages at {self.env.now}')
+            yield self.queues['queue_tlmd_buffer_pallet_3C'].put(pallet)
+            self.env.process(self.stage_pallets())
+
+    def check_pallet_3Cf(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+        packages_for_this_pallet_3Cf = G.TLMD_PARTITION_3C_PACKAGES - ((G.TLMD_PARTITION_3C_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+
+        if len(self.queues['queue_tlmd_partition_3C_packages_f'].items) < packages_for_this_pallet_3Cf:
+            yield self.env.timeout(1)
+            self.env.process(self.check_pallet_3Cf())
+        else:
+            if not self.partition_3C_pallet_flag:
+                self.partition_3C_pallet_flag = True
+                pallet_packages_3Cf = []
+                for _ in range(packages_for_this_pallet_3Cf):
+                    pkg = yield self.queues['queue_tlmd_partition_3C_packages_f'].get()
+                    pallet_packages_3Cf.append(pkg)
+                    yield self.env.timeout(0)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages_3Cf, self.env.now)
+                self.pallet_counter_3C += 1
+                G.M += 1
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_3Cf)} packages at {self.env.now}')
+                yield self.queues['queue_tlmd_buffer_pallet_3C'].put(pallet)
+                self.env.process(self.stage_pallets())
+    """
+    def check_pallet_1(self):
+        while self.LHC_flag and not self.partition_2_flag:
+            yield self.env.timeout(1)
+
+        # Check if it's the last pallet
+        if self.pallet_counter_1 >= G.TLMD_PARTITION_1_PALLETS:
+            packages_for_this_pallet_1f = G.TLMD_PARTITION_1_PACKAGES - ((G.TLMD_PARTITION_1_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+
+            if len(self.queues['queue_tlmd_partition_1_packages'].items) < packages_for_this_pallet_1f:
                 yield self.env.timeout(1)
                 self.env.process(self.check_pallet_1())
             else:
                 if not self.partition_1_pallet_flag:  # Ensure the final pallet is only created once
                     self.partition_1_pallet_flag = True
-                    pallet_packages = []
-                    for _ in range(packages_for_this_pallet):
+                    pallet_packages_1f = []
+                    for _ in range(packages_for_this_pallet_1f):
                         pkg = yield self.queues['queue_tlmd_partition_1_packages'].get()
-                        pallet_packages.append(pkg)
+                        pallet_packages_1f.append(pkg)
                         yield self.env.timeout(0)
-                    pallet = TLMD_Pallet(self.env, f'TLMD_pallet_1_{G.I}', pallet_packages, self.env.now)
+                    pallet = TLMD_Pallet(self.env, f'TLMD_pallet_1_{G.I}', pallet_packages_1f, self.env.now)
                     self.pallet_counter_1 += 1
                     G.I += 1
-                    print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
+                    print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_1f)} packages at {self.env.now}')
                     yield self.queues['queue_tlmd_buffer_pallet_1'].put(pallet)
                     self.env.process(self.stage_pallets())
+                else:
+                    print('ERROR final pallet attempted more than once')
         else:
             if len(self.queues['queue_tlmd_partition_1_packages'].items) < G.TLMD_PARTITION_PALLET_MAX_PACKAGES:
                 yield self.env.timeout(1)
                 self.env.process(self.check_pallet_1())
             else:
-                pallet_packages = []
+                pallet_packages_1 = []
                 for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
                     pkg = yield self.queues['queue_tlmd_partition_1_packages'].get()
-                    pallet_packages.append(pkg)
+                    pallet_packages_1.append(pkg)
                     yield self.env.timeout(0)
-                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_1_{G.I}', pallet_packages, self.env.now)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_1_{G.I}', pallet_packages_1, self.env.now)
                 self.pallet_counter_1 += 1
                 G.I += 1
-                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_1)} packages at {self.env.now}')
                 yield self.queues['queue_tlmd_buffer_pallet_1'].put(pallet)
                 self.env.process(self.stage_pallets())
 
@@ -1143,23 +1342,23 @@ class Sortation_Center_Original:
 
         # Check if it's the last pallet
         if self.pallet_counter_2 >= G.TLMD_PARTITION_2_PALLETS:
-            packages_for_this_pallet = G.TLMD_PARTITION_2_PACKAGES - ((G.TLMD_PARTITION_2_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+            packages_for_this_pallet_2f = G.TLMD_PARTITION_2_PACKAGES - ((G.TLMD_PARTITION_2_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
 
-            if len(self.queues['queue_tlmd_partition_2_packages'].items) < packages_for_this_pallet:
+            if len(self.queues['queue_tlmd_partition_2_packages'].items) < packages_for_this_pallet_2f:
                 yield self.env.timeout(1)
                 self.env.process(self.check_pallet_2())
             else:
                 if not self.partition_2_pallet_flag:  # Ensure the final pallet is only created once
                     self.partition_2_pallet_flag = True
-                    pallet_packages = []
-                    for _ in range(packages_for_this_pallet):
+                    pallet_packages_2f = []
+                    for _ in range(packages_for_this_pallet_2f):
                         pkg = yield self.queues['queue_tlmd_partition_2_packages'].get()
-                        pallet_packages.append(pkg)
+                        pallet_packages_2f.append(pkg)
                         yield self.env.timeout(0)
-                    pallet = TLMD_Pallet(self.env, f'TLMD_pallet_2_{G.L}', pallet_packages, self.env.now)
+                    pallet = TLMD_Pallet(self.env, f'TLMD_pallet_2_{G.L}', pallet_packages_2f, self.env.now)
                     self.pallet_counter_2 += 1
                     G.L += 1
-                    print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
+                    print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_2f)} packages at {self.env.now}')
                     yield self.queues['queue_tlmd_buffer_pallet_2'].put(pallet)
                     self.env.process(self.stage_pallets())
         else:
@@ -1167,15 +1366,15 @@ class Sortation_Center_Original:
                 yield self.env.timeout(1)
                 self.env.process(self.check_pallet_2())
             else:
-                pallet_packages = []
+                pallet_packages_2 = []
                 for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
                     pkg = yield self.queues['queue_tlmd_partition_2_packages'].get()
-                    pallet_packages.append(pkg)
+                    pallet_packages_2.append(pkg)
                     yield self.env.timeout(0)
-                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_2_{G.L}', pallet_packages, self.env.now)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_2_{G.L}', pallet_packages_2, self.env.now)
                 self.pallet_counter_2 += 1
                 G.L += 1
-                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_2)} packages at {self.env.now}')
                 yield self.queues['queue_tlmd_buffer_pallet_2'].put(pallet)
                 self.env.process(self.stage_pallets())
 
@@ -1185,23 +1384,23 @@ class Sortation_Center_Original:
 
         # Check if it's the last pallet
         if self.pallet_counter_3AB >= G.TLMD_PARTITION_3AB_PALLETS:
-            packages_for_this_pallet = G.TLMD_PARTITION_3AB_PACKAGES - ((G.TLMD_PARTITION_3AB_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
+            packages_for_this_pallet_3f = G.TLMD_PARTITION_3AB_PACKAGES - ((G.TLMD_PARTITION_3AB_PALLETS - 1) * G.TLMD_PARTITION_PALLET_MAX_PACKAGES)
 
-            if len(self.queues['queue_tlmd_partition_3AB_packages'].items) < packages_for_this_pallet:
+            if len(self.queues['queue_tlmd_partition_3AB_packages'].items) < packages_for_this_pallet_3f:
                 yield self.env.timeout(1)
                 self.env.process(self.check_pallet_3AB())
             else:
                 if not self.partition_3AB_pallet_flag:
                     self.partition_3AB_pallet_flag = True
-                    pallet_packages = []
-                    for _ in range(packages_for_this_pallet):
+                    pallet_packages_3f = []
+                    for _ in range(packages_for_this_pallet_3f):
                         pkg = yield self.queues['queue_tlmd_partition_3AB_packages'].get()
-                        pallet_packages.append(pkg)
+                        pallet_packages_3f.append(pkg)
                         yield self.env.timeout(0)
-                    pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages, self.env.now)
+                    pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages_3f, self.env.now)
                     self.pallet_counter_3AB += 1
                     G.M += 1
-                    print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
+                    print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_3f)} packages at {self.env.now}')
                     yield self.queues['queue_tlmd_buffer_pallet_3AB'].put(pallet)
                     self.env.process(self.stage_pallets())
         else:
@@ -1209,15 +1408,15 @@ class Sortation_Center_Original:
                 yield self.env.timeout(1)
                 self.env.process(self.check_pallet_3AB())
             else:
-                pallet_packages = []
+                pallet_packages_3 = []
                 for _ in range(G.TLMD_PARTITION_PALLET_MAX_PACKAGES):
                     pkg = yield self.queues['queue_tlmd_partition_3AB_packages'].get()
-                    pallet_packages.append(pkg)
+                    pallet_packages_3.append(pkg)
                     yield self.env.timeout(0)
-                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages, self.env.now)
+                pallet = TLMD_Pallet(self.env, f'TLMD_pallet_3_{G.M}', pallet_packages_3, self.env.now)
                 self.pallet_counter_3AB += 1
                 G.M += 1
-                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
+                print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages_3)} packages at {self.env.now}')
                 yield self.queues['queue_tlmd_buffer_pallet_3AB'].put(pallet)
                 self.env.process(self.stage_pallets())
 
@@ -1262,7 +1461,7 @@ class Sortation_Center_Original:
                 print(f'TLMD {pallet.pallet_id} created with {len(pallet_packages)} packages at {self.env.now}')
                 yield self.queues['queue_tlmd_buffer_pallet_3C'].put(pallet)
                 self.env.process(self.stage_pallets())
-
+    """
     def stage_pallets(self):
         while self.LHC_flag and self.partition_2_flag:
             yield self.env.timeout(1)
@@ -1782,6 +1981,9 @@ def Simulation_Machine(predict,
         packages=('package_tracking_number', lambda x: list(zip(x, df_pallets.loc[x.index, 'scac'], df_pallets.loc[x.index, 'Partition']))),
         linehaul=('Linehaul', 'first'),
     ).reset_index()
+    
+    df_pallets.to_csv('testfile_1.csv', index=False)
+    pallet_info.to_csv('testfile_2.csv', index=False)
 
     G.TLMD_PARTITION_1_PACKAGES = partition_1_count
     G.TLMD_PARTITION_2_PACKAGES = partition_2_count

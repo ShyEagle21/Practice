@@ -112,6 +112,13 @@ def simulation_generator(predict, partition_ratios):
         return result, tlmd_count
 
     assigned_packages, TLMD_LHC = assign_packages_to_pallets(df_pallet_formation, df_carrier_breakdown)
+    new_entry = {'Truck Number': 16, 'pallets': [{'TLMD':TFC_vol, 'FDEG': 0, 'UPSN': 0, 'USPS': 0, 'FDE': 0}]}
+    assigned_packages.append(new_entry)
+    print(assigned_packages)
+
+
+
+
     LH_C_TLMD = 0
     for truck in assigned_packages:
         truck_number = truck['Truck Number']
@@ -122,6 +129,11 @@ def simulation_generator(predict, partition_ratios):
     # Initialize lists to store data for DataFrame
     truck_data = assigned_packages
     arrival_times_df = pd.DataFrame(df_package_distribution[['Truck Number', 'arrival_actualization']])
+    # New row to add
+    new_row = pd.DataFrame({'Truck Number': [16], 'arrival_actualization': [360]})
+
+    # Adding the new row to the DataFrame using pd.concat
+    arrival_times_df = pd.concat([arrival_times_df, new_row], ignore_index=True)
     # Initialize lists to store data for DataFrame
     # Initialize lists
     pallet_numbers = []
@@ -139,29 +151,28 @@ def simulation_generator(predict, partition_ratios):
     partition_1 = round(partition_ratios[0] * total_tlmd_volume)
     partition_2 = round(partition_ratios[1] * total_tlmd_volume)
     partition_3 = round(partition_ratios[2] * total_tlmd_volume)
-    partition_3AB = partition_3 - TLMD_LHC
-    Partition_3C = TLMD_LHC
+
 
     # Adjust partitions if they don't sum up correctly
     if partition_1 + partition_2 + partition_3 != total_tlmd_volume:
         partition_3 += total_tlmd_volume - partition_1 - partition_2
 
+    
+    partition_3AB = partition_3 - TLMD_LHC
+    Partition_3C = TLMD_LHC
+
     print(f'partition_1: {partition_1}, partition_2: {partition_2}, partition_3: {partition_3}')
     print(f'Partition 3AB: {partition_3AB}, Partition 3C: {Partition_3C}')
 
     # Calculate partition limits
-    partition_limits = {
-        '1': partition_1,
-        '2': partition_2,
-        '3AB': partition_3 - TLMD_LHC
-    }
+
     partition_counts = {'1': 0, '2': 0, '3AB': 0, '3C': 0}
 
     # Create and shuffle partitions list
     partitions = (
-        ['1'] * partition_limits['1'] +
-        ['2'] * partition_limits['2'] +
-        ['3AB'] * partition_limits['3AB']
+        ['1'] * partition_1 +
+        ['2'] * partition_2 +
+        ['3AB'] * (partition_3 - TLMD_LHC)
     )
     np.random.shuffle(partitions)
 
@@ -178,6 +189,8 @@ def simulation_generator(predict, partition_ratios):
             linehaul = 'B'
         elif 12 <= truck_number <= 15:
             linehaul = 'C'
+        elif truck_number == 16:
+            linehaul = 'TFC'
         else:
             linehaul = 'Unknown'
 
@@ -198,7 +211,7 @@ def simulation_generator(predict, partition_ratios):
                 if scac in ['USPS', 'UPSN', 'FDEG', 'FDE']:
                     partition_list.append(scac)
                 elif scac == 'TLMD':
-                    if linehaul in ['A', 'B']:
+                    if linehaul in ['A', 'B', 'TFC']:
                         partition = partitions.pop(0)
                         partition_list.append(partition)
                         partition_counts[partition] += 1
@@ -209,7 +222,7 @@ def simulation_generator(predict, partition_ratios):
                         partition_list.append('Unknown')
                 package_counter += 1
             pallet_counter += 1
-
+    print(partition_counts)
     # Create DataFrame
     df = pd.DataFrame({
         'pkg_received_utc_ts': arrival_times_list,
@@ -219,7 +232,7 @@ def simulation_generator(predict, partition_ratios):
         'Linehaul': linehaul_list,
         'Partition': partition_list
     })
-
+    """
     # Generate new packages with specified attributes
     new_packages = {
         'pkg_received_utc_ts': [TFC_arrival_minutes] * TFC_vol,
@@ -233,5 +246,5 @@ def simulation_generator(predict, partition_ratios):
 
     # Append new packages to the existing DataFrame
     df = pd.concat([df, df_new_packages], ignore_index=True)
-
+    """
     return df, df_package_distribution, TFC_arrival_minutes, partition_1, partition_2, partition_3AB, Partition_3C
