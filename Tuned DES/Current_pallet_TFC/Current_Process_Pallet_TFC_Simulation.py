@@ -7,7 +7,7 @@
 
 import math
 import numpy as np
-import sim_generator_TFC_Fluid as sg_c
+import sim_generator_LHC_Sep as sg_c
 import matplotlib.pyplot as plt
 import pandas as pd
 import simpy
@@ -1838,7 +1838,7 @@ def Simulation_Machine(predict,
                         var_40
                         ):
     
-    df_pallets, df_package_distribution, TFC_arrival_minutes, partition_1_count, partition_2_count, partition_3AB_count, partition_3C_count, partition_counts = sg_c.simulation_generator(predict, [0.5, 0.35, 0.15])
+    df_pallets, df_package_distribution, TFC_arrival_minutes, partition_1_count, partition_2_count, partition_3AB_count, partition_3C_count, partition_counts = sg_c.simulation_generator(predict,'pallet', [0.5, 0.35, 0.15])
 
     while partition_1_count + partition_2_count + partition_3AB_count + partition_3C_count != sum(partition_counts.values()):
         #print("PARTITIONS DONE MATCH!!!")
