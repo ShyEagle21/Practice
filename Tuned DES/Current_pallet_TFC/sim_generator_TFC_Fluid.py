@@ -37,9 +37,9 @@ def simulation_generator(predict, partition_ratios):
     df_carrier_breakdown = pd.DataFrame(list(carrier_packages.items()), columns=['Organization', 'Packages'])
     #take the value from the TFC and add it to the TLMD
     total_tlmd_volume = int(df_carrier_breakdown.loc[df_carrier_breakdown['Organization'] == 'TLMD', 'Packages']) + TFC_vol
-    print(f'Total TLMD volume: {total_tlmd_volume}')
-    print(f'TFC volume: {TFC_vol}')
-    print(f'linehaul tlmd volume: {total_tlmd_volume - TFC_vol}')
+    #print(f'Total TLMD volume: {total_tlmd_volume}')
+    #print(f'TFC volume: {TFC_vol}')
+    #print(f'linehaul tlmd volume: {total_tlmd_volume - TFC_vol}')
 
     def assign_packages_to_pallets(trucks_df, packages_df):
         result = []
@@ -114,7 +114,7 @@ def simulation_generator(predict, partition_ratios):
     assigned_packages, TLMD_LHC = assign_packages_to_pallets(df_pallet_formation, df_carrier_breakdown)
     new_entry = {'Truck Number': 16, 'pallets': [{'TLMD':TFC_vol, 'FDEG': 0, 'UPSN': 0, 'USPS': 0, 'FDE': 0}]}
     assigned_packages.append(new_entry)
-    print(assigned_packages)
+    #print(assigned_packages)
 
 
 
@@ -146,7 +146,7 @@ def simulation_generator(predict, partition_ratios):
     # Initialize counters
     package_counter = 1
     pallet_counter = 1
-
+    #print(f'calculation total_tlmd_volume: {total_tlmd_volume}')
     # Calculate partitions
     partition_1 = round(partition_ratios[0] * total_tlmd_volume)
     partition_2 = round(partition_ratios[1] * total_tlmd_volume)
@@ -155,14 +155,14 @@ def simulation_generator(predict, partition_ratios):
 
     # Adjust partitions if they don't sum up correctly
     if partition_1 + partition_2 + partition_3 != total_tlmd_volume:
-        partition_3 += total_tlmd_volume - partition_1 - partition_2
+        partition_3 = total_tlmd_volume - partition_1 - partition_2
 
     
     partition_3AB = partition_3 - TLMD_LHC
     Partition_3C = TLMD_LHC
 
-    print(f'partition_1: {partition_1}, partition_2: {partition_2}, partition_3: {partition_3}')
-    print(f'Partition 3AB: {partition_3AB}, Partition 3C: {Partition_3C}')
+    #print(f'partition_1: {partition_1}, partition_2: {partition_2}, partition_3: {partition_3}')
+    #print(f'Partition 3AB: {partition_3AB}, Partition 3C: {Partition_3C}')
 
     # Calculate partition limits
 
@@ -222,7 +222,7 @@ def simulation_generator(predict, partition_ratios):
                         partition_list.append('Unknown')
                 package_counter += 1
             pallet_counter += 1
-    print(partition_counts)
+    #print(partition_counts)
     # Create DataFrame
     df = pd.DataFrame({
         'pkg_received_utc_ts': arrival_times_list,
@@ -247,4 +247,6 @@ def simulation_generator(predict, partition_ratios):
     # Append new packages to the existing DataFrame
     df = pd.concat([df, df_new_packages], ignore_index=True)
     """
-    return df, df_package_distribution, TFC_arrival_minutes, partition_1, partition_2, partition_3AB, Partition_3C
+
+
+    return df, df_package_distribution, TFC_arrival_minutes, partition_1, partition_2, partition_3AB, Partition_3C, partition_counts
