@@ -70,7 +70,7 @@ class G:
     TLMD_STAGED_PACKAGES = None
     TLMD_PARTITION_1_PACKAGES = None
     TLMD_PARTITION_2_PACKAGES = None
-    TLMD_PARTITION_3_PACKAGES = None
+    TLMD_PARTITION_3C_PACKAGES = None
     TLMD_PARTITION_3AB_PACKAGES = None
     TLMD_PARTITION_3C_PACKAGES = None
     TLMD_PARTITION_1_PALLETS = None
@@ -460,8 +460,8 @@ class Sortation_Center_Original:
             'queue_tlmd_buffer_pallet_3AB' : simpy.Store(self.env),
             'queue_tlmd_buffer_pallet_3C' : simpy.Store(self.env),
             'queue_tlmd_1_staged_pallet': simpy.Store(env),
-            #'queue_tlmd_2_staged_pallet': simpy.Store(env),
-            #'queue_tlmd_3_staged_pallet': simpy.Store(env),
+            'queue_tlmd_2_staged_pallet': simpy.Store(env),
+            'queue_tlmd_3_staged_pallet': simpy.Store(env),
             'queue_tlmd_induct_staging_pallets' : simpy.Store(env, capacity=6),
             'queue_tlmd_induct_staging_packages' : simpy.Store(env),
             'queue_tlmd_splitter' : simpy.Store(env, capacity = 1),
@@ -1293,33 +1293,65 @@ class Sortation_Center_Original:
                 self.env.process(self.stage_pallets())
     
     def stage_pallets(self):
-        while self.LHC_flag and self.partition_2_flag:
+        while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)
 
         with self.current_resource['tm_nonpit_buffer'].request(priority=1) as req:
             yield req
             if len(self.queues['queue_tlmd_buffer_pallet_1'].items) > 0:
                 pallet = yield self.queues['queue_tlmd_buffer_pallet_1'].get()
+                if self.var_status == True:
+                    process_time = np.random.normal(G.TLMD_PARTITION_STAGE_RATE, G.TLMD_PARTITION_STAGE_RATE * self.var_mag)
+                elif self.var_status == False:
+                    process_time = G.TLMD_PARTITION_STAGE_RATE
+                yield self.env.timeout(max(0,process_time))
+                if self.pause_event:
+                    while self.pause_event:
+                        yield self.env.timeout(1) # Wait for the pause event to be triggered
+                pallet.current_queue = 'queue_tlmd_1_staged_pallet'
+                yield self.queues['queue_tlmd_1_staged_pallet'].put(pallet)
+
             elif len(self.queues['queue_tlmd_buffer_pallet_2'].items) > 0:
                 pallet = yield self.queues['queue_tlmd_buffer_pallet_2'].get()
+                if self.var_status == True:
+                    process_time = np.random.normal(G.TLMD_PARTITION_STAGE_RATE, G.TLMD_PARTITION_STAGE_RATE * self.var_mag)
+                elif self.var_status == False:
+                    process_time = G.TLMD_PARTITION_STAGE_RATE
+                yield self.env.timeout(max(0,process_time))
+                if self.pause_event:
+                    while self.pause_event:
+                        yield self.env.timeout(1) # Wait for the pause event to be triggered
+                pallet.current_queue = 'queue_tlmd_2_staged_pallet'
+                yield self.queues['queue_tlmd_2_staged_pallet'].put(pallet)
+
             elif len(self.queues['queue_tlmd_buffer_pallet_3AB'].items) > 0:
                 pallet = yield self.queues['queue_tlmd_buffer_pallet_3AB'].get()
+                if self.var_status == True:
+                    process_time = np.random.normal(G.TLMD_PARTITION_STAGE_RATE, G.TLMD_PARTITION_STAGE_RATE * self.var_mag)
+                elif self.var_status == False:
+                    process_time = G.TLMD_PARTITION_STAGE_RATE
+                yield self.env.timeout(max(0,process_time))
+                if self.pause_event:
+                    while self.pause_event:
+                        yield self.env.timeout(1) # Wait for the pause event to be triggered
+                pallet.current_queue = 'queue_tlmd_3_staged_pallet'
+                yield self.queues['queue_tlmd_3_staged_pallet'].put(pallet)
+
             elif len(self.queues['queue_tlmd_buffer_pallet_3C'].items) > 0:
-                print("test")
                 pallet = yield self.queues['queue_tlmd_buffer_pallet_3C'].get()
+                if self.var_status == True:
+                    process_time = np.random.normal(G.TLMD_PARTITION_STAGE_RATE, G.TLMD_PARTITION_STAGE_RATE * self.var_mag)
+                elif self.var_status == False:
+                    process_time = G.TLMD_PARTITION_STAGE_RATE
+                yield self.env.timeout(max(0,process_time))
+                if self.pause_event:
+                    while self.pause_event:
+                        yield self.env.timeout(1) # Wait for the pause event to be triggered
+                pallet.current_queue = 'queue_tlmd_3_staged_pallet'
+                yield self.queues['queue_tlmd_3_staged_pallet'].put(pallet)
             else:
                 print('ERROR: No pallets left in any queue')
                 return
-            if self.var_status == True:
-                process_time = np.random.normal(G.TLMD_PARTITION_STAGE_RATE, G.TLMD_PARTITION_STAGE_RATE * self.var_mag)
-            elif self.var_status == False:
-                process_time = G.TLMD_PARTITION_STAGE_RATE
-            yield self.env.timeout(max(0,process_time))
-            if self.pause_event:
-                while self.pause_event:
-                    yield self.env.timeout(1) # Wait for the pause event to be triggered
-            pallet.current_queue = 'queue_tlmd_1_staged_pallet'
-            yield self.queues['queue_tlmd_1_staged_pallet'].put(pallet)
             self.pallet_counter_A += 1
             #print(f'Pallet {pallet.pallet_id} staged at time {self.env.now}')
             self.env.process(self.check_inbound_finished())
@@ -1327,18 +1359,21 @@ class Sortation_Center_Original:
     def check_inbound_finished(self):
         while self.LHC_flag and not self.partition_2_flag:
             yield self.env.timeout(1)   
-        if len(self.queues['queue_tlmd_1_staged_pallet'].items) == G.TLMD_PARTITION_1_PALLETS + G.TLMD_PARTITION_2_PALLETS + G.TLMD_PARTITION_3AB_PALLETS and not self.TLMD_AB_flag:
+        if len(self.queues['queue_tlmd_1_staged_pallet'].items) + len(self.queues['queue_tlmd_2_staged_pallet'].items)+ len(self.queues['queue_tlmd_3_staged_pallet'].items) == G.TLMD_PARTITION_1_PALLETS + G.TLMD_PARTITION_2_PALLETS + G.TLMD_PARTITION_3AB_PALLETS and not self.TLMD_AB_flag:
             self.ab_TLMD_packages_staged_time = self.env.now
             G.TLMD_AB_INDUCT_TIME = self.ab_TLMD_packages_staged_time
            # print(f'All tlmd A&B packages staged at {self.ab_TLMD_packages_staged_time}')
             self.TLMD_AB_flag = True
             self.TFC_flag = False
             G.TLMD_STAGED_PACKAGES = len(self.queues['queue_tlmd_1_staged_pallet'].items)
-            print(f'All {G.TLMD_STAGED_PACKAGES} LH AB pallets staged')
+            #print(f'All {G.TLMD_STAGED_PACKAGES} LH AB pallets staged')
             self.env.process(self.feed_TLMD_induct_staging())
-        elif self.TLMD_AB_flag and self.pallet_counter_A >= G.TLMD_PARTITION_1_PALLETS + G.TLMD_PARTITION_2_PALLETS + G.TLMD_PARTITION_3AB_PALLETS+ G.TLMD_PARTITION_3C_PALLETS:
+        elif self.TLMD_AB_flag and self.pallet_counter_A >= G.TLMD_PARTITION_1_PALLETS + G.TLMD_PARTITION_2_PALLETS + G.TLMD_PARTITION_3AB_PALLETS + G.TLMD_PARTITION_3C_PALLETS:
             self.c_TLDM_packages_staged_time = self.env.now
             G.TLMD_C_INDUCT_TIME = self.c_TLDM_packages_staged_time
+            #print('C is finished')
+            self.TLMD_C_flag = True
+            self.LHC_flag = False
             self.env.process(self.feed_TLMD_induct_staging())
         else:
             yield self.env.timeout(1)
@@ -1355,11 +1390,10 @@ class Sortation_Center_Original:
                 yield self.env.timeout(1)
             if len(self.queues['queue_tlmd_1_staged_pallet'].items) > 0:
                 pallet = yield self.queues['queue_tlmd_1_staged_pallet'].get()
-            #elif len(self.queues['queue_tlmd_2_staged_pallet'].items) > 0:
-                #pallet = yield self.queues['queue_tlmd_2_staged_pallet'].get()
-                #print(f'grabbed pallet {pallet.pallet_id} from queue_tlmd_2_staged_pallet at {self.env.now}')
-            #elif len(self.queues['queue_tlmd_3_staged_pallet'].items) > 0:
-                #pallet = yield self.queues['queue_tlmd_3_staged_pallet'].get()
+            elif len(self.queues['queue_tlmd_2_staged_pallet'].items) > 0:
+                pallet = yield self.queues['queue_tlmd_2_staged_pallet'].get()
+            elif len(self.queues['queue_tlmd_3_staged_pallet'].items) > 0:
+                pallet = yield self.queues['queue_tlmd_3_staged_pallet'].get()
             else:
                 print('ERROR: No pallets left in any queue')
                 return
@@ -1899,7 +1933,7 @@ def Simulation_Machine(predict,
     "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
     "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
     "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-    "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+    "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
     # Sorted Packages
     "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
     # Linehaul Totals
@@ -1960,7 +1994,7 @@ def Simulation_Machine(predict,
     G.TLMD_PARTITION_1_PACKAGES = None
     G.TLMD_PARTITION_2_PACKAGES = None
     G.TLMD_PARTITION_3AB_PACKAGES = None
-    G.TLMD_PARTITION_3_PACKAGES = None
+    G.TLMD_PARTITION_3C_PACKAGES = None
     G.TOTAL_PALLETS_TLMD = None
     G.TLMD_PARTITION_1_SORT_TIME = None
     G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -2082,7 +2116,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -2143,7 +2177,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -2258,7 +2292,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -2318,7 +2352,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -2441,7 +2475,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -2502,7 +2536,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -2619,7 +2653,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -2679,7 +2713,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -2797,7 +2831,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -2857,7 +2891,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -2974,7 +3008,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -3034,7 +3068,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -3150,7 +3184,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -3210,7 +3244,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
@@ -3326,7 +3360,7 @@ def Simulation_Machine(predict,
         "TLMD_PARTITION_1_PACKAGES": G.TLMD_PARTITION_1_PACKAGES,
         "TLMD_PARTITION_2_PACKAGES": G.TLMD_PARTITION_2_PACKAGES,
         "TLMD_PARTITION_3AB_PACKAGES": G.TLMD_PARTITION_3AB_PACKAGES,
-        "TLMD_PARTITION_3_PACKAGES": G.TLMD_PARTITION_3_PACKAGES,
+        "TLMD_PARTITION_3C_PACKAGES": G.TLMD_PARTITION_3C_PACKAGES,
         # Sorted Packages
         "TLMD_SORTED_PACKAGES": G.TLMD_SORTED_PACKAGES,
         # Linehaul Totals
@@ -3386,7 +3420,7 @@ def Simulation_Machine(predict,
         G.TLMD_PARTITION_1_PACKAGES = None
         G.TLMD_PARTITION_2_PACKAGES = None
         G.TLMD_PARTITION_3AB_PACKAGES = None
-        G.TLMD_PARTITION_3_PACKAGES = None
+        G.TLMD_PARTITION_3C_PACKAGES = None
         G.TOTAL_PALLETS_TLMD = None
         G.TLMD_PARTITION_1_SORT_TIME = None
         G.TLMD_PARTITION_2_SORT_TIME = None 
