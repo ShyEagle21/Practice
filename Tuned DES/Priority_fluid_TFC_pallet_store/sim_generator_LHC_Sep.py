@@ -131,7 +131,7 @@ def simulation_generator(predict, status, partition_ratios):
     }
 
     assigned_packages.append(new_entry)
-    #print(assigned_packages)
+    print(assigned_packages)
 
 
 
@@ -239,6 +239,7 @@ def simulation_generator(predict, status, partition_ratios):
                         partition_list.append('Unknown')
                 package_counter += 1
             pallet_counter += 1
+    #print(partition_counts)
     # Create DataFrame
     df = pd.DataFrame({
         'pkg_received_utc_ts': arrival_times_list,
@@ -248,5 +249,21 @@ def simulation_generator(predict, status, partition_ratios):
         'Linehaul': linehaul_list,
         'Partition': partition_list
     })
+    """
+    # Generate new packages with specified attributes
+    new_packages = {
+        'pkg_received_utc_ts': [TFC_arrival_minutes] * TFC_vol,
+        'package_tracking_number': [f"PKG{package_counter + i:06d}" for i in range(TFC_vol)],
+        'scac': ['TLMD'] * TFC_vol,
+        'Pallet': [(pallet_counter + i % TFC_pallets) for i in range(TFC_vol)],
+        'Linehaul': 'TFC',
+        'Partition': [partitions.pop(0) for _ in range(TFC_vol)]
+    }
+    df_new_packages = pd.DataFrame(new_packages)
+
+    # Append new packages to the existing DataFrame
+    df = pd.concat([df, df_new_packages], ignore_index=True)
+    """
+
 
     return df, df_package_distribution, TFC_arrival_minutes, partition_1, partition_2, partition_3AB, Partition_3C, partition_counts

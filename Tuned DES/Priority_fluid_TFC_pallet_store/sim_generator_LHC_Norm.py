@@ -41,8 +41,7 @@ def simulation_generator(predict, status, partition_ratios):
 
     def assign_packages_to_pallets(trucks_df, packages_df):
         result = []
-        tlmd_count = 0  # Counter for 'TLMD' packages in trucks 12-15
-        
+        tlmd_count = 0
         # Create a list of all packages
         all_packages = []
         for j in range(len(packages_df)):
@@ -66,36 +65,17 @@ def simulation_generator(predict, status, partition_ratios):
             # Get the packages for the current truck
             truck_packages = all_packages[start_index:start_index + predicted_truck_volume]
             start_index += predicted_truck_volume
-            
-            # Create a list of pallets for the current truck
             if i >= 11:
                 count_tlmd = truck_packages.count('TLMD')
-                count_NC = len(truck_packages) - count_tlmd
-                tlmd_pallet = math.ceil(count_tlmd / 55)
-                NC_pallet = math.ceil(count_NC / 55)
-                if tlmd_pallet + NC_pallet > num_pallets:
-                    num_pallets = tlmd_pallet + NC_pallet
-
-                # Update the TLMD counter for trucks 12-15
                 if 12 <= truck_number <= 15:
                     tlmd_count += count_tlmd
-
+            # Create a list of pallets for the current truck
             truck_pallets = [[] for _ in range(num_pallets)]
             
             # Randomly assign packages to pallets on the current truck
-            if i >= 11:
-                for package in truck_packages:
-                    if package == 'TLMD':
-                        pallet_index = np.random.randint(0, tlmd_pallet)
-                        truck_pallets[pallet_index].append(package)
-                    else:
-                        pallet_index = np.random.randint(tlmd_pallet, num_pallets)
-                        truck_pallets[pallet_index].append(package)
-            else:
-                for package in truck_packages:
-                    pallet_index = np.random.randint(0, num_pallets)
-                    truck_pallets[pallet_index].append(package)
-                
+            for package in truck_packages:
+                pallet_index = np.random.randint(0, num_pallets)
+                truck_pallets[pallet_index].append(package)
             
             # Count the number of packages per organization on each pallet
             pallet_counts = []
@@ -107,6 +87,7 @@ def simulation_generator(predict, status, partition_ratios):
                 'Truck Number': truck_number,
                 'pallets': pallet_counts
             })
+        
         return result, tlmd_count
 
     assigned_packages, TLMD_LHC = assign_packages_to_pallets(df_pallet_formation, df_carrier_breakdown)
@@ -131,7 +112,7 @@ def simulation_generator(predict, status, partition_ratios):
     }
 
     assigned_packages.append(new_entry)
-    #print(assigned_packages)
+    print(assigned_packages)
 
 
 
@@ -239,6 +220,7 @@ def simulation_generator(predict, status, partition_ratios):
                         partition_list.append('Unknown')
                 package_counter += 1
             pallet_counter += 1
+    #print(partition_counts)
     # Create DataFrame
     df = pd.DataFrame({
         'pkg_received_utc_ts': arrival_times_list,
@@ -248,5 +230,21 @@ def simulation_generator(predict, status, partition_ratios):
         'Linehaul': linehaul_list,
         'Partition': partition_list
     })
+    """
+    # Generate new packages with specified attributes
+    new_packages = {
+        'pkg_received_utc_ts': [TFC_arrival_minutes] * TFC_vol,
+        'package_tracking_number': [f"PKG{package_counter + i:06d}" for i in range(TFC_vol)],
+        'scac': ['TLMD'] * TFC_vol,
+        'Pallet': [(pallet_counter + i % TFC_pallets) for i in range(TFC_vol)],
+        'Linehaul': 'TFC',
+        'Partition': [partitions.pop(0) for _ in range(TFC_vol)]
+    }
+    df_new_packages = pd.DataFrame(new_packages)
+
+    # Append new packages to the existing DataFrame
+    df = pd.concat([df, df_new_packages], ignore_index=True)
+    """
+
 
     return df, df_package_distribution, TFC_arrival_minutes, partition_1, partition_2, partition_3AB, Partition_3C, partition_counts
