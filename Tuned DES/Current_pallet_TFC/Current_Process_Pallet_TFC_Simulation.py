@@ -1418,7 +1418,7 @@ class Sortation_Center_Original:
         if self.pause_event:
             while self.pause_event:
                 yield self.env.timeout(1) # Wait for the pause event to be triggered
-        with self.current_resource['tm_TLMD_induct_stage'].request(priority=1) as req:
+        with self.current_resource['tm_TLMD_induct'].request(priority=1) as req:
             yield req
             if  self.process_tlmd_induct_Stage_count[0] < 1:
                 self.process_tlmd_induct_Stage_count[0] += 1
